@@ -21,6 +21,12 @@ const MAX_STEPS = 4;
 const env = (k: string, d = '') => (globalThis as any).Deno?.env.get(k) ?? d;
 const lastTurnAt = new Map<string, number>();
 
+// how much of a line's letters are Arabic (0 to 1)
+export function arabicShare(s: string) {
+  const ar = (s.match(/[\u0600-\u06FF]/g) || []).length, la = (s.match(/[A-Za-z]/g) || []).length;
+  return ar + la ? ar / (ar + la) : 1;
+}
+
 function langLine(lang: string) {
   return lang === 'ar'
     ? 'in Saudi Najdi Arabic, warm and simple, the way the app itself speaks (حط، خلها، زين، وش). Address them in the masculine singular like the app does (اجلس، اضرب، جرّب), and in the feminine only once you know the learner is a woman (her name, her own words)'
@@ -315,6 +321,14 @@ export async function handleTurn(body: TurnBody, deps: Deps) {
     } catch (e) { log('error', 'self-check', { error: String(e).slice(0, 300) }); }
   }
   say = say.replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 600);
+  // Arabic mode always speaks Arabic: a reply that came out in English is put into Saudi Arabic before it is said
+  if (lang === 'ar' && say && arabicShare(say) < 0.5) {
+    try {
+      const out = await chat([{ role: 'system', content: 'Rewrite the line in Saudi Najdi Arabic, warm and simple, the same meaning and length. Keep names. Reply with the line only.' }, { role: 'user', content: say }], [], { temperature: 0.2, max_tokens: 300 });
+      const ar = String(out.msg.content || '').replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim();
+      if (ar && arabicShare(ar) >= 0.5) { log('model', out.model, { usage: out.usage, fix: 'arabic' }, out.ms, 'put into Arabic'); say = ar.slice(0, 600); }
+    } catch (e) { log('error', 'arabic', { error: String(e).slice(0, 300) }); }
+  }
   log('reply', persona.name.en, { say, actions: ctx.actions }, undefined, say.slice(0, 160));
 
   // 5. keep a short memory of the conversation for the next turn: what was said and done, and where things stand

@@ -629,3 +629,30 @@ html[dir="rtl"] .qx-prompt { line-height: 1.5; }
   .qx-hint i, .qx-fx span, .qa-guest.is-target .qa-guest-ring { animation: none !important; }
   .qx-enter, .qx-enter-2, .qx-enter-3, .qx-art .qa-scene, .qx-fallback { animation: none !important; }
 }
+
+/* the 3D majlis (qahwa-world.js): it fills the stage; model-viewer stays only for "View in your room" */
+.qx-world { position: absolute; inset: 0; z-index: 1; }
+.qx-world:empty { display: none; }
+body.qx-3d .qx-stage { height: 52vh; min-height: 320px; max-height: 480px; background: #140b07; }
+body.qx-3d .qx-stage::before { display: none; }
+body.qx-3d .qx-stage model-viewer { opacity: 0; pointer-events: none; width: 2px; height: 2px; left: 0; top: 0; }
+body.qx-3d .qx-fx { display: none; }
+
+/* Abu Fahad's majlis (rawi-stage.js): you serve his guests for real */
+.qm { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 0 10px 8px; }
+.qm-majlis { position: relative; flex: 0 1 auto; width: 100%; aspect-ratio: 390 / 300; max-height: 100%; min-height: 150px; margin: 0 auto; border-radius: 20px; overflow: hidden; }
+.qm { justify-content: center; }
+.qm-majlis .qa-majlis { width: 100%; height: 100%; display: block; }
+.qm-majlis .qa-guest { cursor: pointer; }
+.qm-tags { position: absolute; left: 0; right: 0; bottom: 8px; display: grid; grid-template-columns: repeat(4, 1fr); pointer-events: none; direction: ltr; }
+.qm-tag { justify-self: center; font-size: 11.5px; font-weight: 700; color: #F6EEE2; background: rgba(21,13,9,.75); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.qm-hint { flex: none; text-align: center; font-size: 13px; color: rgba(246,238,226,.7); }
+.qm-tools { flex: none; display: flex; gap: 10px; align-items: stretch; }
+.qm-cup { flex: none; width: 92px; border-radius: 18px; background: rgba(246,238,226,.06); border: 1px solid rgba(246,238,226,.12); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px; }
+.qm-cup svg { width: 58px; height: 64px; }
+.qm-cup b { font-size: 13px; color: #E3B25A; }
+.qm-side { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.qm-hands { display: flex; gap: 6px; }
+.qm-hand { flex: 1; height: 38px; border-radius: 999px; border: 1px solid rgba(246,238,226,.22); background: transparent; color: #F6EEE2; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; padding: 0 8px; }
+.qm-hand.on { background: rgba(227,178,90,.18); border-color: #E3B25A; color: #E3B25A; }
+.qm-pour { width: 100%; height: 50px; }

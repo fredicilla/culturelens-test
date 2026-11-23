@@ -124,6 +124,37 @@ async function fetchVoice(text, lang, voice, signal) {
 function decode(ctx, buf) {
   return new Promise((ok, bad) => { try { const p = ctx.decodeAudioData(buf, ok, bad); if (p && p.then) p.then(ok, bad); } catch (e) { bad(e); } });
 }
+// a higher voice at the same speed (a boy's voice from an adult one): stretch the sound longer (WSOLA: overlapping
+// slices, each placed where it lines up best with the last), then play it back faster by the same amount
+export function pitchUp(ctx, ab, ratio) {
+  if (!ratio || Math.abs(ratio - 1) < 0.01) return ab;
+  const x = ab.getChannelData(0), n = x.length, sr = ab.sampleRate;
+  const N = Math.round(sr * 0.04) & ~1, Hs = N >> 1, Ha = Hs / ratio, tol = Math.round(sr * 0.008);
+  const win = new Float32Array(N); for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+  const outLen = Math.ceil(n * ratio) + N, y = new Float32Array(outLen), w = new Float32Array(outLen);
+  let prev = 0;
+  for (let k = 0, o = 0; ; k++, o += Hs) {
+    const target = Math.round(k * Ha);
+    if (target + N + tol >= n || o + N >= outLen) break;
+    let best = target;
+    if (k > 0) {
+      // the slice that best continues the previous one (cross-correlation over a small window)
+      let bestC = -Infinity; const nat = prev + Hs;
+      for (let d = -tol; d <= tol; d += 2) {
+        const a = target + d; if (a < 0 || a + Hs > n) continue;
+        let c = 0; for (let i = 0; i < Hs; i += 4) c += x[a + i] * x[nat + i];
+        if (c > bestC) { bestC = c; best = a; }
+      }
+    }
+    for (let i = 0; i < N; i++) { y[o + i] += x[best + i] * win[i]; w[o + i] += win[i]; }
+    prev = best;
+  }
+  for (let i = 0; i < outLen; i++) if (w[i] > 1e-3) y[i] /= w[i];
+  // played faster: back to the first length, higher by the ratio
+  const out = ctx.createBuffer(1, n, sr), z = out.getChannelData(0);
+  for (let i = 0; i < n; i++) { const p = i * ratio, j = p | 0, f = p - j; z[i] = (y[j] || 0) * (1 - f) + (y[j + 1] || 0) * f; }
+  return out;
+}
 const later = (ms) => new Promise((r) => setTimeout(r, ms));
 function timeout(p, ms) { return Promise.race([p, later(ms).then(() => { throw new Error('slow'); })]); }
 
@@ -181,7 +212,7 @@ export function speak(text, lang, opts) {
     if (ctx && ctx.state !== 'running') { try { await timeout(ctx.resume(), 400); } catch (e) {} }
     if (opts.voice !== false && ctx && ctx.state === 'running' && endpoint() && Date.now() > (restingTill[lang] || 0) && store('cl_voice') !== 'device') {
       const parts = voicePieces(text), got = [];
-      const get = (i) => (got[i] = got[i] || fetchVoice(parts[i], lang, opts.voice || 'fahad', current && current.ctrl ? current.ctrl.signal : undefined).then((b) => decode(ctx, b)));
+      const get = (i) => (got[i] = got[i] || fetchVoice(parts[i], lang, opts.voice || 'fahad', current && current.ctrl ? current.ctrl.signal : undefined).then((b) => decode(ctx, b)).then((ab) => opts.pitch ? pitchUp(ctx, ab, opts.pitch) : ab));
       let i = 0;
       try {
         for (; i < parts.length; i++) {

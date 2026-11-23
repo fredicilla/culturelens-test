@@ -39,7 +39,8 @@ function fahadSays(text) {
   if (hud.hidden && q) { q.textContent = text; q.hidden = false; }
   else bubble({ en: text, ar: text }, Math.min(12000, 2800 + text.length * 60), true);
   if (!S.sound || !AI.mod) return;
-  AI.mod.speak(text, isAr() ? 'ar' : 'en', { voice: 'fahad', onLevel: function (v) {
+  // Fahad is the neighbor's boy: a young voice (Noura's, a little higher, same speed)
+  AI.mod.speak(text, isAr() ? 'ar' : 'en', { voice: 'noura', pitch: 1.18, onLevel: function (v) {
     var b = $('#mq-bubble'), face = b && b.classList.contains('show') ? b : q;
     if (face) face.classList.toggle('talk', v > 0.12);
   } });

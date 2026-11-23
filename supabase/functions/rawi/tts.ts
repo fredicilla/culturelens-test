@@ -81,9 +81,11 @@ async function sha(s: string): Promise<string> {
   return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function voiceFor(lang: string, voice: string) {
+// English lines can be read by the Saudi voice too (accent: 'saudi'): the Arabic-accented English the team loves
+// (Sadu's voice). Pages that ask for it get it; older pages keep the English model.
+export function voiceFor(lang: string, voice: string, accent = '') {
   const v = String(voice || 'fahad').toLowerCase();
-  if (lang === 'en') return { model: EN.model, voice: EN.voices.includes(v) ? v : (EN_OF[v] || 'troy') };
+  if (lang === 'en' && accent !== 'saudi') return { model: EN.model, voice: EN.voices.includes(v) ? v : (EN_OF[v] || 'troy') };
   return { model: AR.model, voice: AR.voices.includes(v) ? v : 'fahad' };
 }
 
@@ -91,7 +93,7 @@ export async function speech(body: any, deps: Deps = {}): Promise<Spoken> {
   const lang = body?.lang === 'en' ? 'en' : 'ar';
   const text = clean(body?.text).slice(0, MAX);
   if (!text) return { error: 'empty', status: 400 };
-  const { model, voice } = voiceFor(lang, body?.voice);
+  const { model, voice } = voiceFor(lang, body?.voice, body?.accent);
   const path = voice + '/' + (await sha(model + '|' + voice + '|' + text)) + '.wav';
   // heard before: from Storage
   if (deps.bucket) { try { const hit = await deps.bucket.get(path); if (hit && hit.length > 44) return { audio: hit, from: 'cache', status: 200 }; } catch (_) { /* made again */ } }

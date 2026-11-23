@@ -469,7 +469,9 @@ function renderAR() {
   arBtn.hidden = false;
   arBtn.classList.toggle('is-off', !S.arMode);
   arBtn.classList.toggle('is-in', S.inAR);
-  arBtn.innerHTML = ICON.cube + '<span>' + L(S.inAR ? T.arExit : S.arMode === 'quicklook' ? T.arQL : T.ar) + '</span>';
+  var label = L(S.inAR ? T.arExit : S.arMode === 'quicklook' ? T.arQL : T.ar);
+  arBtn.innerHTML = ICON.cube + '<span>' + label + '</span>';
+  arBtn.setAttribute('aria-label', label); arBtn.title = label;
 }
 function stepsDots(n, i) { var s = ''; for (var k = 0; k < n; k++) s += '<i class="' + (k === i ? 'is-on' : k < i ? 'is-done' : '') + '"></i>'; return s; }
 function iconFor(kind) { return kind === 'tap' ? TAPPER : kind === 'khallu' ? SLAP : kind === 'lr' ? ARROW_LR : ARROW; }
@@ -1695,6 +1697,8 @@ function onFrame(dt) {
     if (!S.hs.ok && !S.hs.canSkip && t - S.hs.t0 > 35000) { S.hs.canSkip = true; howBar(); }
   }
   if (S.part === 'play') rowFrame();
+  // the perform mode (samri-perform.js) leads the rows while its lesson runs
+  if (S.coach && window.__spRows) window.__spRows(world.beat);
   frameVoices();
   frameGuide(t); frameMarks(); frameCue();
 }

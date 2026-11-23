@@ -26,7 +26,7 @@
  * against wind, rain and sand.
  */
 import { World, LOOM } from './sadu-world.js';
-import { bandCanvas, drawBand, YARN, YARN_KEYS, NAMES, DEMO, COLS, ZONES, rowsFor } from './sadu-weave.js';
+import { bandCanvas, bandGrid, drawBand, YARN, YARN_KEYS, NAMES, DEMO, COLS, ZONES, rowsFor } from './sadu-weave.js';
 
 // ════════════════════════════════════════════════════════════
 // helpers
@@ -257,7 +257,7 @@ var G = {
   // the last step: Grandma Haya (Rawi, the AI agent) weaves the learner's own story into a band
   aiK: { en: 'The last step · AI', ar: 'الخطوة الأخيرة · ذكاء اصطناعي' },
   aiT: { en: 'Weave your story with Grandma Haya', ar: 'انسج حكايتك مع الجدة هيا' },
-  aiP: { en: 'Sit with her at the loom. She asks you about what you hold dear, then weaves it into a band of real Sadu patterns and tells you what each one means.', ar: 'اجلس معها عند النول. تسألك عن اللي غالي عليك، وبعدين تنسجه لك بنقوش سدو حقيقية وتقول لك وش يعني كل نقش.' },
+  aiP: { en: 'Sit with her at the loom. Tell her about what you hold dear and pick the yarns and patterns you like: she weaves your story in front of you, band by band, and tells you what she wove. Keep the piece at the end.', ar: 'اجلس معها عند النول. احكِ لها عن اللي غالي عليك واختار الألوان والنقوش اللي تحبها، وهي تنسج حكايتك قدامك، شريط ورا شريط، وتقول لك وش نسجت. والقطعة لك بالنهاية.' },
   aiGo: { en: 'Sit with her', ar: 'اجلس معها' }
 };
 var R = {
@@ -495,7 +495,9 @@ function renderAR() {
   arBtn.hidden = false;
   arBtn.classList.toggle('is-off', !S.arMode);
   arBtn.classList.toggle('is-in', S.inAR);
-  arBtn.innerHTML = ICON.cube + '<span>' + L(S.inAR ? T.arExit : S.arMode === 'quicklook' ? T.arQL : T.ar) + '</span>';
+  var label = L(S.inAR ? T.arExit : S.arMode === 'quicklook' ? T.arQL : T.ar);
+  arBtn.innerHTML = ICON.cube + '<span>' + label + '</span>';
+  arBtn.setAttribute('aria-label', label); arBtn.title = label;
 }
 function band(spec, rows, o) {
   o = o || {};
@@ -1486,14 +1488,136 @@ function renderResults() {
   var go = $('#sd-ai-go');
   if (go) go.addEventListener('click', function () { sfx('tap'); openHaya('end'); });
 }
-// Grandma Haya's session (rawi-session.js, loaded only now): she asks, then weaves the story with weave_band
+// Grandma Haya at her loom (rawi-stage.js, loaded only now): you tell her your story and pick yarns and patterns,
+// she weaves it in front of you band by band (weave_band), and the piece is yours to keep
+var HL_TEXT = {
+  kicker: { en: 'The last step', ar: 'الخطوة الأخيرة' },
+  yarns: { en: 'Yarns you like', ar: 'ألوان تحبها' },
+  pats: { en: 'A pattern', ar: 'نقش' },
+  empty: { en: 'Your piece will grow here.', ar: 'قطعتك بتكبر هنا.' },
+  save: { en: 'Keep my piece', ar: 'احفظ قطعتي' }
+};
 function openHaya(from) {
   var g = S.game;
-  import('./rawi-session.js').then(function (m) {
-    m.openSession({
-      experience: 'sadu', title: G.aiT, intro: G.aiP, start: G.aiGo,
-      context: { page: 'sadu', from: from, results: from === 'end' && g ? { reading: g.score + '/' + QUESTIONS.length, race: g.racePts + '/4' } : undefined },
-      actions: { weave_band: showStoryBands }
+  var H = { bands: [], weaving: 0, picks: { yarns: [], pattern: null }, sendT: 0, title: '' };
+  var api = null, root = null, cvs = null;
+  var CW = 6, CH = 7;
+  function rowsOf(b) { return rowsFor(b.center, 2, false); }
+  function paint() {
+    if (!cvs) return;
+    var total = H.bands.reduce(function (n, b) { return n + b.rows; }, 0);
+    var spare = 22;   // bare warp below the woven part, waiting for the next band
+    cvs.width = COLS * CW; cvs.height = Math.max(total + spare, 60) * CH;
+    var ctx = cvs.getContext('2d');
+    ctx.fillStyle = '#120D0B'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+    var y = 0;
+    H.bands.forEach(function (b) { drawBand(ctx, b.grid, { cw: CW, ch: CH, dir: 'v', woven: b.woven, y: y }); y += b.rows * CH; });
+    // the bare warp: the threads of the last band carry on, waiting
+    var last = H.bands[H.bands.length - 1];
+    for (var x = 0; x < COLS; x++) {
+      var hex = last ? YARN[YARN_KEYS[last.grid.cells[x]]].hex : (x % 2 ? '#EEE5D2' : '#221A17');
+      ctx.fillStyle = hex; ctx.globalAlpha = 0.55; ctx.fillRect(x * CW + CW * 0.35, y, CW * 0.3, cvs.height - y); ctx.globalAlpha = 1;
+    }
+    root.querySelector('.hl-empty').hidden = H.bands.length > 0;
+    root.querySelector('.hl-save').hidden = !H.bands.length || H.weaving > 0;
+    // the newest woven row stays in view
+    var box = root.querySelector('.hl-cloth'); box.scrollTop = box.scrollHeight;
+  }
+  function weave(a) {
+    if (!a || !Array.isArray(a.bands)) return;
+    if (a.title) H.title = a.title;
+    a.bands.slice(0, 3).forEach(function (b, i) {
+      if (NAMES[b.center] == null || NAMES[b.edge] == null || !YARN[b.ground] || !YARN[b.figure]) return;
+      var spec = { center: b.center, edge: b.edge, ground: b.ground, figure: b.figure }, rows = rowsOf(spec);
+      var band = { spec: spec, rows: rows, grid: bandGrid(spec, rows, {}), woven: 0, meaning: b.meaning || '' };
+      H.bands.push(band);
+      // woven row by row, like the shuttle passing
+      H.weaving++;
+      setTimeout(function () {
+        var t0 = performance.now(), dur = 2600;
+        (function step(now) {
+          band.woven = Math.min(band.rows, Math.round((now - t0) / dur * band.rows));
+          if (band.woven % 3 === 0) sfx('tap');
+          paint();
+          if (band.woven < band.rows && root && root.isConnected) requestAnimationFrame(step);
+          else { H.weaving--; caption(band); paint(); }
+        })(t0);
+      }, i * 2800);
+    });
+    paint();
+  }
+  function caption(band) {
+    var list = root && root.querySelector('.hl-notes'); if (!list) return;
+    var d = document.createElement('div'); d.className = 'hl-note';
+    d.innerHTML = '<i style="background:' + YARN[band.spec.figure].hex + ';border-color:' + YARN[band.spec.ground].hex + '"></i><span><b></b><small></small></span>';
+    d.querySelector('b').textContent = L(NAMES[band.spec.center]) + ' · ' + L(NAMES[band.spec.edge]);
+    d.querySelector('small').textContent = band.meaning;
+    list.appendChild(d); list.scrollLeft = isAr() ? -list.scrollWidth : list.scrollWidth;
+  }
+  function pickChanged() {
+    clearTimeout(H.sendT);
+    // a moment after the last tap, she hears what you picked
+    H.sendT = setTimeout(function () {
+      if (!api || !api.started()) return;
+      api.event('learner_picked', { yarns: H.picks.yarns, pattern: H.picks.pattern || 'none yet', note: 'weave with these when you weave next' });
+    }, 1400);
+  }
+  function save() {
+    if (!cvs) return;
+    var out = document.createElement('canvas'), pad = 24, k = 2;
+    out.width = cvs.width * k + pad * 2; out.height = cvs.height * k + pad * 2 + 40;
+    var c = out.getContext('2d'); c.fillStyle = '#1A120E'; c.fillRect(0, 0, out.width, out.height);
+    c.imageSmoothingEnabled = false; c.drawImage(cvs, pad, pad, cvs.width * k, cvs.height * k);
+    c.fillStyle = '#E3C47A'; c.font = 'bold 18px sans-serif'; c.textAlign = 'center';
+    c.fillText((H.title ? H.title + ' · ' : '') + 'CultureLens', out.width / 2, out.height - 16);
+    out.toBlob(function (blob) {
+      if (!blob) return;
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'sadu-' + (H.title || 'story').replace(/[^\w\u0600-\u06FF-]+/g, '-') + '.png';
+      document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    });
+  }
+  function labelsHL() {
+    if (!root) return;
+    root.querySelector('.hl-yarns-t').textContent = L(HL_TEXT.yarns);
+    root.querySelector('.hl-pats-t').textContent = L(HL_TEXT.pats);
+    root.querySelector('.hl-empty').textContent = L(HL_TEXT.empty);
+    root.querySelector('.hl-save span').textContent = L(HL_TEXT.save);
+    root.querySelectorAll('.hl-pat').forEach(function (b) { b.textContent = L(NAMES[b.getAttribute('data-p')]); });
+    root.querySelectorAll('.hl-yarn').forEach(function (b) { b.setAttribute('aria-label', isAr() ? YARN[b.getAttribute('data-y')].ar : YARN[b.getAttribute('data-y')].en); });
+  }
+  import('./rawi-stage.js').then(function (m) {
+    api = m.openStage({
+      experience: 'sadu', title: G.aiT, kicker: HL_TEXT.kicker, intro: G.aiP, start: G.aiGo, face: HAYA, accent: '#E3C47A', bg: '#140E12',
+      context: { page: 'sadu', from: from, mode: 'the learner can pick yarns and a pattern on screen; their picks come as events; weave_band weaves in front of them', results: from === 'end' && g ? { reading: g.score + '/' + QUESTIONS.length, race: g.racePts + '/4' } : undefined },
+      actions: { weave_band: weave },
+      build: function (el) {
+        root = document.createElement('div'); root.className = 'hl';
+        root.innerHTML = '<div class="hl-loom"><div class="hl-beam"></div><div class="hl-cloth"><canvas></canvas><div class="hl-empty"></div></div><div class="hl-beam"></div>' +
+            '<button type="button" class="hl-save" hidden>' + ICON.check + '<span></span></button></div>' +
+          '<div class="hl-notes"></div>' +
+          '<div class="hl-pick"><div><small class="hl-yarns-t"></small><div class="hl-yarns">' + YARN_KEYS.map(function (k) { return '<button type="button" class="hl-yarn" data-y="' + k + '" style="background:' + YARN[k].hex + '"></button>'; }).join('') + '</div></div>' +
+          '<div><small class="hl-pats-t"></small><div class="hl-pats">' + ['tree', 'chain', 'camels'].map(function (k) { return '<button type="button" class="hl-pat" data-p="' + k + '"></button>'; }).join('') + '</div></div></div>';
+        el.appendChild(root);
+        cvs = root.querySelector('canvas');
+        root.querySelectorAll('.hl-yarn').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var k = b.getAttribute('data-y'), i = H.picks.yarns.indexOf(k);
+            if (i >= 0) H.picks.yarns.splice(i, 1); else { H.picks.yarns.push(k); if (H.picks.yarns.length > 2) H.picks.yarns.shift(); }
+            root.querySelectorAll('.hl-yarn').forEach(function (x) { x.classList.toggle('on', H.picks.yarns.indexOf(x.getAttribute('data-y')) >= 0); });
+            sfx('tap'); pickChanged();
+          });
+        });
+        root.querySelectorAll('.hl-pat').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var k = b.getAttribute('data-p'); H.picks.pattern = H.picks.pattern === k ? null : k;
+            root.querySelectorAll('.hl-pat').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-p') === H.picks.pattern); });
+            sfx('tap'); pickChanged();
+          });
+        });
+        root.querySelector('.hl-save').addEventListener('click', save);
+        labelsHL(); paint();
+      },
+      onLanguage: labelsHL
     });
   }).catch(function (e) { console.error(e); toast({ en: 'Grandma Haya could not be reached. Try again.', ar: 'ما قدرنا نوصل للجدة هيا. جرّب مرة ثانية.' }); });
 }

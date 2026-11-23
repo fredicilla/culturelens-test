@@ -21,7 +21,7 @@
  */
 import { Music, STYLES, SUNG } from './samri-music.js';
 import { BANK, loadTopic } from './samri-ai.js';
-import { pageRawi, PERSONA, endpoint, wav16, hush } from './rawi.js';
+import { pageRawi, PERSONA, endpoint, wav16, hush, speak, VOICE } from './rawi.js';
 import { createBody, prepare as preparePose } from './samri-body.js';
 
 const SIM = /[?&]sim=1/.test(location.search);
@@ -37,6 +37,7 @@ const T = {
   intro: { en: 'Do the Samri for real. Kneel facing your phone, about a metre away, so your head, shoulders and hands are in view, and pick up something to be your tar: a plate, a pot lid or a hardcover book. The mu\'allim watches you through the camera and listens: strike your tar and sing the line back, sway with your row, lift and lower your tar, and slap it down at the end.', ar: 'سوّ السامري صدق. اجلس على ركبك مقابل جوالك على بُعد متر تقريبًا، بحيث يبان راسك وكتوفك ويدينك، وخذ شي يكون طارك: صحن، غطا قدر، أو كتاب جلد. المعلّم يشوفك من الكاميرا ويسمعك: اضرب طارك ورد البيت، وتمايل مع صفّك، وارفع طارك ونزّله، واضربه بالأرض بالنهاية.' },
   privacy: { en: 'The camera and your strikes are read on this phone, and no video leaves it. Only your sung answers go to the agent\'s ear, to check the words.', ar: 'الكاميرا وضرباتك تنقرأ على جوالك، وما يطلع منه أي فيديو. بس ردّك بصوتك يروح لأذن الوكيل عشان يتأكد من الكلمات.' },
   start: { en: 'Open the camera', ar: 'افتح الكاميرا' },
+  welcome: { en: 'Welcome to the row! Watch me and the men with me: we strike the tar and sing back the line. Then it is your turn, and I will watch you.', ar: 'حيّاك الله بالصف! شوفني أنا والرجال اللي معي: نضرب الطار ونرد البيت. وبعدين دورك، وأنا أشوفك.' },
   loading: { en: 'Opening the camera and waking the AI...', ar: 'نفتح الكاميرا ونجهّز الذكاء الاصطناعي...' },
   cam: { en: 'The mu\'allim needs to see you. Allow the camera, then try again.', ar: 'المعلّم لازم يشوفك. اسمح للكاميرا وجرّب مرة ثانية.' },
   model: { en: 'The camera\'s AI did not load. Check the connection and try again.', ar: 'ذكاء الكاميرا ما تحمّل. تأكد من الاتصال وجرّب مرة ثانية.' },
@@ -147,6 +148,14 @@ const CSS = `
 #sp-ov { position: fixed; inset: 0; z-index: 2147483000; background: radial-gradient(120% 80% at 50% 30%, #18204A 0%, #070A16 70%); color: #F3EEE6; display: none; overflow: hidden;
   font-family: var(--font-ui, 'IBM Plex Sans Arabic', system-ui, sans-serif); }
 #sp-ov.open { display: block; }
+body.sp-world > *:not(#mq-stage):not(#sp-ov) { visibility: hidden !important; }
+#sp-ov.world { background: linear-gradient(rgba(7,10,22,.55), rgba(7,10,22,0) 22%, rgba(7,10,22,0) 48%, rgba(7,10,22,.75) 72%); }
+#sp-ov.world .sp-ring { display: none; }
+#sp-ov.world.cam .sp-cam { inset: auto; top: calc(env(safe-area-inset-top, 0px) + 196px); inset-inline-start: 12px; width: min(25vw, 120px); aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden;
+  border: 2px solid #E3C47A; box-shadow: 0 10px 28px rgba(0,0,0,.5); z-index: 4; }
+#sp-ov.world.cam .sp-shade { display: none; }
+#sp-ov.world.cam .sp-stage { padding-top: 0; }
+
 #sp-ov * { box-sizing: border-box; }
 .sp-cam { position: absolute; inset: 0; display: none; background: #070A16; }
 #sp-ov.cam .sp-cam { display: block; }
@@ -275,14 +284,50 @@ function open() {
   S.open = true; S.phase = 'intro';
   $('#sp-ov').classList.add('open');
   S.sm = sharedMusic();
-  if (S.sm) { S.music = S.sm.music; S.own = false; S.sm.S.coach = true; S.music.stop(); S.music.plan = null; if (S.sm.world) S.sm.world.asleep = true; }
+  if (S.sm) {
+    S.music = S.sm.music; S.own = false; S.sm.S.coach = true; S.music.stop(); S.music.plan = null;
+    // the Samri night stays on behind: the mu'allim and his row perform while he welcomes you
+    S.prevAmb = !!S.sm.S.ambient;
+    if (S.sm.world) {
+      S.sm.world.asleep = false; $('#sp-ov').classList.add('world'); document.body.classList.add('sp-world');
+      try { S.sm.world.view('leader'); } catch (e) {}
+      window.__spRows = rowsFrame;
+      if (S.sm.ambient) S.sm.ambient(0.4);
+    }
+  }
   else if (!S.music) { S.music = new Music(); S.music.preload(); S.own = true; }
   S.music.unlock();
   if (!SIM) preparePose().catch(() => {});      // the camera's model loads while the learner reads
   intro();
+  // he says hello himself, in his voice
+  if (endpoint()) setTimeout(() => { if (S.open && S.phase === 'intro') speak(L(T.welcome), isAr() ? 'ar' : 'en', { voice: VOICE.samri, force: true }); }, 500);
+}
+// the rows during the lesson: they do what the drill asks, alongside the learner (the page calls this each frame)
+function rowsFrame(b) {
+  const w = S.sm && S.sm.world; if (!w || S.phase === 'intro' || S.phase === 'setup') return;
+  const A = w.rows[0], B = w.rows[1], m = S.music, r = S.run;
+  A.lift = null; B.lift = null;
+  if (!r) {
+    // between drills, while he talks, the mu'allim's row shows the move that comes next
+    const mv = (S.pending || S.last || {}).move || 'answer';
+    A.mode = mv === 'answer' ? 'beat' : 'sway'; B.mode = 'hold';
+    if (mv === 'lift') A.lift = Math.floor(b / 2) % 2;
+    return;
+  }
+  const move = r.move || 'answer';
+  const base = move === 'answer' ? 'beat' : 'sway';
+  A.mode = m && m.singing && m.singing(0) ? 'voice' : base;
+  B.mode = m && m.singing && m.singing(1) ? 'voice' : base;
+  if (move === 'lift' && r.evs) {
+    const now = m.time(); let up = 0;
+    r.evs.forEach((e) => { if (now >= e.due - 0.15) up = e.k === 'up' ? 1 : 0; });
+    A.lift = up; B.lift = up;
+  }
 }
 function close() {
   stopDrill(); hush(); stopSetup();
+  window.__spRows = null; $('#sp-ov').classList.remove('world'); document.body.classList.remove('sp-world');
+  if (S.sm) { S.sm.S.ambient = S.prevAmb; if (S.sm.world) try { S.sm.world.view(S.sm.S.part === 'story' ? 'cover' : 'rows'); } catch (e) {} }
   S.open = false; S.phase = 'intro';
   $('#sp-ov').classList.remove('open', 'cam', 'drill');
   stopMic();
@@ -352,6 +397,8 @@ async function go(cam) {
   const ok = await startMic();
   if (!ok) { say(esc(L(T.mic))); buttons([{ label: T.retry, onClick: () => go(cam) }, { label: T.close, ghost: true, onClick: close }]); return; }
   S.phase = 'lesson';
+  hush();
+  if (S.sm) { S.sm.S.ambient = false; S.music.stop(); S.music.plan = null; if (S.sm.world) try { S.sm.world.view('leader'); } catch (e) {} }
   rawi.start({ page: 'samri', mode: 'perform', camera: !!cam, time: new Date().getHours() + 'h' });
 }
 
@@ -528,6 +575,7 @@ function queueDrill(args, spoken) {
 }
 function stopDrill() {
   if (S.run) { S.run.cancel = true; S.run = null; }
+  if (S.sm && S.sm.world && S.open) S.sm.world.asleep = false;
   cancelAnimationFrame(S.raf);
   if (S.music) { S.music.rests = []; S.music.plan = null; S.music.stop(); S.music.claps = false; S.music.drums = true; }
   record(false); S.rec = null;
@@ -551,7 +599,7 @@ async function runDrill(d) {
   if (H.topic) { try { seg = (await loadTopic(H.topic, music.ensure())).seg; } catch (e) { seg = null; } }
   const voiceFor = (row) => (H.voice ? H.voice(row) : seg && seg[H.clip(row)] ? { row, what: H.what, seg: seg[H.clip(row)], vol: 1 } : null);
   const slots = sc.slots, youAt = slots.indexOf('you');
-  const run = { d, H, cancel: false };
+  const run = { d, H, cancel: false, move: sc.move };
   S.run = run; S.last = { ...d, move: sc.move }; S.phase = 'drill';
   lvl({ level: d.level, style, move: sc.move }); $('#sp-result').innerHTML = ''; $('#sp-heard').textContent = '';
   line(H, d.level >= 3 && youAt >= 0);
@@ -571,6 +619,11 @@ async function runDrill(d) {
     const gp = i ? e.due - evs[i - 1].due : 9, gn = i < evs.length - 1 ? evs[i + 1].due - e.due : 9;
     e.pre = Math.min(PRE, 0.45 * gp); e.post = Math.min(e.k === 'khallu' ? 0.8 : POST, 0.55 * gn);
   });
+  run.evs = evs;
+  // while the camera judges the moves the night holds still behind (the pose model keeps the phone's power),
+  // after one last frame drawn from the new angle
+  if (S.sm && S.sm.world && S.cam) requestAnimationFrame(() => requestAnimationFrame(() => { if (S.run === run) S.sm.world.asleep = true; }));
+  if (S.sm && S.sm.world) try { S.sm.world.view(sc.move === 'answer' ? 'leader' : 'rows', { snap: true }); } catch (e) {}
   const kh = evs.find((e) => e.k === 'khallu');
   const rests = [];
   if (hasYou) rests.push([ys, ye]);
@@ -640,6 +693,7 @@ async function runDrill(d) {
   evs.forEach((e) => { if (!e.res) { e.res = judgeEvent(e, e.due - e.pre, Infinity) || { r: 'missed' }; } });
   music.rests = []; music.plan = null; music.stop(); music.claps = false; music.drums = true;
   who(null); lightWords(H, -1); cueShow(null); $('#sp-ov').classList.remove('drill');
+  if (S.sm && S.sm.world && S.open) S.sm.world.asleep = false;
   const m = hasYou ? measure(strokes, out, ys, ye) : {};
   if (S.cam) {
     const bt0 = hasYou && !evs.length ? ys - 0.2 : t0 + 0.5, bt1 = Math.max(end, hasYou ? ye + 0.2 : 0);

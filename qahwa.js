@@ -257,7 +257,7 @@
     // the last step: Abu Fahad (Rawi, the AI agent) puts you in his majlis and asks what you would do
     aiK: { en: 'The last step · AI', ar: 'الخطوة الأخيرة · ذكاء اصطناعي' },
     aiT: { en: 'Serve in Abu Fahad\'s majlis', ar: 'قهوِ في مجلس أبو فهد' },
-    aiP: { en: 'Guests are arriving. Abu Fahad gives you one moment at a time, and you tell him what you would do, by voice or in writing. He tells you if it is right, and why.', ar: 'الضيوف جايين. أبو فهد يعطيك موقف ورا موقف، وأنت تقول له وش تسوي، بصوتك أو كتابة. ويقول لك إذا صح، وليش.' },
+    aiP: { en: 'His guests are seated and the dallah is in your hand. Serve them for real: tap a guest, hold to pour, and pick the hand that holds the finjan. Abu Fahad watches, talks to you out loud, and you can answer him by voice.', ar: 'ضيوفه جالسين والدلة بيدك. صب لهم صدق: اضغط على الضيف، واضغط مطوّل وصب، واختار اليد اللي تمسك الفنجال. أبو فهد يشوفك ويكلمك بصوته، وتقدر ترد عليه بصوتك.' },
     aiGo: { en: 'Join his majlis', ar: 'ادخل مجلسه' }
   };
   var PICK_GOOD = [
@@ -414,7 +414,7 @@
     var down = false, raf = 0, last = 0;
     function frame(t) {
       if (!down) return;
-      var dt = Math.min(0.05, (t - last) / 1000); last = t;
+      var dt = Math.min(0.12, (t - last) / 1000); last = t;     // real time, so a slow phone holds no longer than a fast one
       if (h.onTick(dt) === false) { stop(); return; }
       raf = requestAnimationFrame(frame);
     }
@@ -529,7 +529,7 @@
       houses.forEach(function (h, i) { if (S.najrTaps > i) h.classList.add('lit'); });
       var strike = function () {
         S.najrTaps += 1;
-        sfx('ting'); buzz(12);
+        sfx('ting'); buzz(12); if (W) W.strike(S.act.taps);
         pestle.classList.add('hit');
         setTimeout(function () { pestle.classList.remove('hit'); }, 110);
         rings.classList.remove('go'); void rings.getBoundingClientRect(); rings.classList.add('go');
@@ -656,6 +656,7 @@
             '<div class="qx-hot" slot="hotspot-lid" data-position="0 0 0" data-normal="0 0 1" hidden><i></i><span data-h="lid"></span></div>' +
             '<div class="qx-hot to-left" slot="hotspot-handle" data-position="0 0 0" data-normal="0 0 1" hidden><i></i><span data-h="handle"></span></div>' +
           '</model-viewer>' +
+          '<div class="qx-world" id="qx-world"></div>' +
           '<div class="qx-scene-box" id="qx-scene"></div>' +
           '<div class="qx-fx" id="qx-fx"><span></span><span></span><span></span></div>' +
           '<button class="qx-ar-btn" id="qx-ar" hidden>' + ICON.cube + '<span></span></button>' +
@@ -664,10 +665,33 @@
         '<article class="qx-card" id="qx-stepcard"></article>' +
       '</section>';
     $('#qx-ar').addEventListener('click', launchAR);
+    startWorld();
     var mv = $('#qx-mv');
     mv.addEventListener('load', function () { $('#qx-loading').hidden = true; fitModel(); });
+    // (with the 3D majlis, model-viewer is only there for AR: hidden from view, still loaded)
     // a model that can't load (offline, slow network) is replaced by its drawing, the step still works
     mv.addEventListener('error', function () { if (stageModel && mv.getAttribute('src') === modelSrc(stageModel)) markBad(stageModel); });
+  }
+
+  // ── the 3D majlis (qahwa-world.js): every step happens on the real things; the drawings stay as the fallback ──
+  var W = null, worldTried = false;
+  function startWorld() {
+    var box = $('#qx-world');
+    if (W) { try { W.dispose(); } catch (e) {} W = null; }
+    if (!box || window.CL_NO_3D) return;
+    var ok = false;
+    try { var c = document.createElement('canvas'); ok = !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) {}
+    if (!ok) return;
+    worldTried = true;
+    import('./qahwa-world.js').then(function (mod) {
+      if (!box.isConnected) return;
+      W = mod.createWorld(box, { onTap: function (what) {
+        if (what === 'najr') tapOnce();
+        else if (what.indexOf('spice:') === 0 && currentStep().action === 'spices' && !S.done) toggleSpice(what.slice(6), $('.qa-spice[data-spice="' + what.slice(6) + '"]'));
+      } });
+      document.body.classList.add('qx-3d'); window.__qahwaWorld = W;
+      if (main.getAttribute('data-view') === 'brew') { if (S.brewFinished) W.setStep('done'); else showStage(currentStep(), false); }
+    }).catch(function (e) { console.warn('3D majlis', e); document.body.classList.remove('qx-3d'); });
   }
 
   var HOT = {
@@ -735,6 +759,16 @@
   var stageModel = null;
   function showStage(st, fresh) {
     var mv = $('#qx-mv'), scene = $('#qx-scene'), ar = $('#qx-ar'), fx = $('#qx-fx');
+    if (W) {
+      fx.classList.remove('on');
+      scene.hidden = true; scene.innerHTML = ''; $('#qx-loading').hidden = true;
+      W.setStep(st.key, S.act);
+      // the dallah steps keep "View in your room": model-viewer waits, invisible, with the dallah loaded
+      ar.hidden = st.stage !== 'model';
+      if (st.stage === 'model' && stageModel !== st.model && !badModel[st.model]) loadModel(st.model);
+      mv.hidden = st.stage !== 'model';
+      return;
+    }
     fx.classList.toggle('on', st.fx === 'always');
     if (st.stage === 'model') {
       mv.setAttribute('alt', L(st.title));
@@ -852,7 +886,7 @@
     if (st.action === 'spices') {
       var picked = a.picked || {};
       var names = Object.keys(picked).filter(function (k) { return picked[k]; }).map(function (k) { return L(SPICES[k].name); });
-      return '<div class="qx-timer-text">' + (names.length ? L({ en: 'In the dallah: ', ar: 'بالدلة: ' }) + names.join(isAr() ? '، ' : ', ') : L({ en: 'Tap the bowls above to pick.', ar: 'اضغط على الصحون فوق عشان تختار.' })) + '</div>';
+      return '<div class="qx-timer-text">' + (names.length ? L({ en: 'In the dallah: ', ar: 'بالدلة: ' }) + names.join(isAr() ? '، ' : ', ') : L({ en: 'Tap the bowls to pick.', ar: 'اضغط على الصحون عشان تختار.' })) + '</div>';
     }
     if (st.action === 'pour') {
       var l = a.l || 0;
@@ -894,13 +928,14 @@
     var col = beanColor(r);
     $$('.qa-bean', $('#qx-scene')).forEach(function (b) { b.setAttribute('fill', col); });
     var n = $('#qx-needle'); if (n) n.style.left = (r * 100) + '%';
+    if (W) W.roast(r);
     var smoke = $('.qa-roast-smoke', $('#qx-scene')); if (smoke) smoke.style.opacity = clamp((r - 0.25) * 2, 0, 1);
   }
   var GOLD = [0.42, 0.62];
   function roastHold() {
     var acc = 0;
     return {
-      onStart: function () { if (S.done) return; setStatus('info', { en: 'Roasting, stirring the beans', ar: 'نحمّس ونحرّك البن' }); $('.qa-stir', $('#qx-scene')) && $('.qa-stir', $('#qx-scene')).classList.add('qx-stirring'); },
+      onStart: function () { if (S.done) return; if (W) W.stir(true); setStatus('info', { en: 'Roasting, stirring the beans', ar: 'نحمّس ونحرّك البن' }); $('.qa-stir', $('#qx-scene')) && $('.qa-stir', $('#qx-scene')).classList.add('qx-stirring'); },
       onTick: function (dt) {
         if (S.done) return false;
         S.act.r = clamp((S.act.r || 0) + dt * 0.16, 0, 1);
@@ -910,6 +945,7 @@
         if (S.act.r >= 1) return false;
       },
       onEnd: function () {
+        if (W) W.stir(false);
         if (S.done) return;
         var r = S.act.r || 0;
         if (r >= GOLD[0] && r <= GOLD[1]) succeed({ en: 'Golden. That is a Najdi hamsa.', ar: 'ذهبي. هذي حمسة نجدية.' });
@@ -936,7 +972,7 @@
       if (pestle) { pestle.classList.add('hit'); setTimeout(function () { pestle.classList.remove('hit'); }, 110); }
       if (rings) { rings.classList.remove('go'); void rings.getBoundingClientRect(); rings.classList.add('go'); }
       $$('.qa-house', sc).forEach(function (h, i) { if (S.act.taps > i * 3) h.classList.add('lit'); });
-    } else { sfx('spoon'); buzz(10); }
+    } else { sfx('spoon'); buzz(10); if (W) W.spoon(S.act.taps); }
     $$('#qx-pips i').forEach(function (p, i) { p.classList.toggle('is-on', i < S.act.taps); });
     if (S.act.taps >= st.taps) {
       succeed(st.scene === 'najrScene'
@@ -955,7 +991,7 @@
     var t0 = performance.now(), last = 0;
     S.act.timer = setInterval(function () {
       var k = clamp((performance.now() - t0) / (st.secs * 1000), 0, 1);
-      S.act.t = k;
+      S.act.t = k; if (W) W.timed(k);
       var ring = $('#qx-ring'); if (ring) ring.setAttribute('stroke-dashoffset', 157.1 * (1 - k));
       if (st.key !== 'settle' && performance.now() - last > 260) { last = performance.now(); sfx('bubble'); }
       if (k >= 1) {
@@ -974,14 +1010,16 @@
     if (!sp.ok) {
       sfx('bad'); buzz([20, 40, 20]);
       rawi('mistake', { step: 'spices', what: 'tried to add ' + k + ' to the coffee' });
-      el.classList.remove('is-wrong'); void el.getBoundingClientRect(); el.classList.add('is-wrong');
+      if (el) { el.classList.remove('is-wrong'); void el.getBoundingClientRect(); el.classList.add('is-wrong'); }
+      if (W) W.spices(S.act.picked, k);
       S.act.msg = sp.why; S.act.msgKind = 'bad';
       setStatus('bad', sp.why);
       return;
     }
     sfx('tap');
     S.act.picked[k] = !S.act.picked[k];
-    el.classList.toggle('is-on', S.act.picked[k]);
+    if (el) el.classList.toggle('is-on', S.act.picked[k]);
+    if (W) W.spices(S.act.picked);
     $('#qx-act').innerHTML = actionHTML(currentStep());
     S.act.msg = null; setStatus('', null);
     var b = $('#qx-cta'); if (b) b.disabled = !S.act.picked.cardamom;
@@ -1004,10 +1042,11 @@
     if (s) { s.setAttribute('cy', y.toFixed(2)); s.style.opacity = l > 0.01 ? 1 : 0; }
     var g = $('#qx-gauge'); if (g) g.style.width = Math.round(l * 100) + '%';
     var gn = $('#qx-gauge-num'); if (gn) gn.textContent = pct(l);
+    if (W) W.pour(l);
   }
   function pourHold() {
     return {
-      onStart: function () { if (S.done) return; var sc = $('#qx-scene'); sc.classList.add('is-pouring'); pourSound(true); },
+      onStart: function () { if (S.done) return; var sc = $('#qx-scene'); sc.classList.add('is-pouring'); pourSound(true); if (W) W.pouring(true); },
       onTick: function (dt) {
         if (S.done) return false;
         S.act.l = clamp((S.act.l || 0) + dt * 0.3, 0, 1);
@@ -1017,7 +1056,7 @@
       },
       onEnd: function () {
         var sc = $('#qx-scene'); if (sc) sc.classList.remove('is-pouring');
-        pourSound(false);
+        pourSound(false); if (W) W.pouring(false);
         if (S.done) return;
         var l = S.act.l || 0;
         if (l >= QUARTER[0] && l <= QUARTER[1]) succeed({ en: 'A quarter cup. Perfect.', ar: 'ربع فنجال. مضبوط.' });
@@ -1041,7 +1080,8 @@
     $$('.qx-hot', mv).forEach(function (h) { h.hidden = true; });
     mv.setAttribute('auto-rotate', '');
     $('#qx-ar span').textContent = L({ en: 'Put the finjan on your table', ar: 'حط الفنجال على طاولتك' });
-    if (badModel[CUP]) { stageModel = CUP; showFallback(CUP); }
+    if (W) { W.setStep('done'); scene.hidden = true; scene.innerHTML = ''; $('#qx-ar').hidden = false; mv.hidden = false; if (stageModel !== CUP && !badModel[CUP]) loadModel(CUP); }
+    else if (badModel[CUP]) { stageModel = CUP; showFallback(CUP); }
     else {
       scene.hidden = true; scene.innerHTML = '';
       mv.hidden = false; $('#qx-ar').hidden = false;
@@ -1328,13 +1368,88 @@
     if (go) go.addEventListener('click', function () { sfx('tap'); openMajlis('end'); });
     drawGuests();
   }
-  // Abu Fahad's majlis (rawi-session.js, loaded only now): serving situations, one at a time, answered by voice or text
+  // Abu Fahad's majlis (rawi-stage.js, loaded only now): you serve his guests for real, he watches and talks to you
+  var MJ_TEXT = {
+    kicker: { en: 'The last step', ar: 'الخطوة الأخيرة' },
+    hint: { en: 'Tap a guest, then hold to pour.', ar: 'اضغط على ضيف، وبعدين اضغط مطوّل وصب.' },
+    pickFirst: { en: 'Tap a guest first.', ar: 'اختار ضيف أول.' },
+    pour: { en: 'Hold to pour', ar: 'اضغط مطوّل وصب' },
+    inRight: { en: 'Finjan in my right hand', ar: 'الفنجال باليمين' },
+    inLeft: { en: 'Finjan in my left hand', ar: 'الفنجال باليسار' },
+    shook: { en: 'shook his cup', ar: 'هزّ فنجاله' },
+    cups: { en: 'cups', ar: 'فناجيل' }
+  };
   function openMajlis(from) {
     var g = S.game, learned = g && g.learned ? Object.keys(g.learned).filter(function (k) { return g.learned[k]; }) : [];
-    import('./rawi-session.js').then(function (m) {
-      m.openSession({
-        experience: 'qahwa', title: G_TEXT.aiT, intro: G_TEXT.aiP, start: G_TEXT.aiGo,
-        context: { page: 'qahwa', from: from, results: from === 'end' && g ? { score: g.score + '/' + MAX_SCORE, got_right: learned } : undefined }
+    var M = { sel: null, hand: 'right', l: 0, cups: {}, order: [], shook: {}, pouring: false };
+    var stageApi = null, root = null;
+    function guestEl(k) { return root && root.querySelector('.qa-guest[data-guest="' + k + '"]'); }
+    function drawCup() {
+      var c = root && root.querySelector('.qm-cup'); if (!c) return;
+      c.innerHTML = '<svg viewBox="0 0 60 70" aria-hidden="true">' + QArt.finjan(M.l, { noShadow: true }) + '</svg><b>' + pct(M.l) + '</b>';
+    }
+    function paintHands() {
+      if (!root) return;
+      root.querySelectorAll('.qm-hand').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-hand') === M.hand); });
+    }
+    function labelsMJ() {
+      if (!root) return;
+      root.querySelector('.qm-hint').textContent = L(MJ_TEXT.hint);
+      root.querySelector('.qm-pour span').textContent = L(MJ_TEXT.pour);
+      root.querySelector('[data-hand="right"]').textContent = L(MJ_TEXT.inRight);
+      root.querySelector('[data-hand="left"]').textContent = L(MJ_TEXT.inLeft);
+      SEATS.forEach(function (k) { var t = root.querySelector('.qm-tag[data-g="' + k + '"]'); if (t) t.textContent = L(GUESTS[k].name) + (M.cups[k] ? ' (' + num(M.cups[k]) + ')' : ''); });
+      drawCup();
+    }
+    function select(k) {
+      M.sel = k; sfx('tap');
+      SEATS.forEach(function (x) { var el = guestEl(x); if (el) el.classList.toggle('is-target', x === k); });
+    }
+    function served() {
+      var k = M.sel, l = M.l;
+      if (!k) { stageApi.say(L(MJ_TEXT.pickFirst)); return; }
+      if (l < 0.04) return;
+      M.cups[k] = (M.cups[k] || 0) + 1; M.order.push(k);
+      var el = guestEl(k);
+      if (el) { el.classList.remove('is-target', 'is-shaking'); el.classList.add('is-holding'); setTimeout(function () { el.classList.remove('is-holding'); el.classList.add('is-served'); }, 2600); }
+      stageApi.event('served', {
+        guest: GUESTS[k].name.en + ' (' + GUESTS[k].role.en + ')', his_cup_number: M.cups[k], fill_percent: Math.round(l * 100),
+        finjan_in: M.hand + ' hand', dallah_in: (M.hand === 'right' ? 'left' : 'right') + ' hand',
+        he_had_shaken_his_cup: !!M.shook[k], order_so_far: M.order.map(function (x) { return GUESTS[x].name.en; })
+      });
+      M.sel = null; M.l = 0; drawCup(); labelsMJ();
+      // a guest who has had two cups shakes the next one as he hands it back: enough
+      if (M.cups[k] >= 2 && !M.shook[k] && k !== 'host') setTimeout(function () {
+        M.shook[k] = true; var e2 = guestEl(k); if (e2) { e2.classList.remove('is-served'); e2.classList.add('is-shaking'); }
+        stageApi.event('guest_shook_cup', { guest: GUESTS[k].name.en, note: 'he shakes his cup as he hands it back' });
+      }, 6000);
+    }
+    import('./rawi-stage.js').then(function (m) {
+      stageApi = m.openStage({
+        experience: 'qahwa', title: G_TEXT.aiT, kicker: MJ_TEXT.kicker, intro: G_TEXT.aiP, start: G_TEXT.aiGo, accent: '#E3B25A',
+        context: { page: 'qahwa', mode: 'serve for real: the learner taps a guest, picks the finjan hand and pours; events tell you what they did', from: from, results: from === 'end' && g ? { score: g.score + '/' + MAX_SCORE, got_right: learned } : undefined },
+        build: function (el) {
+          root = document.createElement('div'); root.className = 'qm';
+          root.innerHTML = '<div class="qm-majlis">' + QArt.majlis(SEATS.map(function (k) { return GUESTS[k]; })) +
+              '<div class="qm-tags">' + SEATS.map(function (k) { return '<span class="qm-tag" data-g="' + k + '"></span>'; }).join('') + '</div></div>' +
+            '<div class="qm-hint"></div>' +
+            '<div class="qm-tools"><div class="qm-cup"></div>' +
+              '<div class="qm-side"><div class="qm-hands"><button type="button" class="qm-hand" data-hand="right"></button><button type="button" class="qm-hand" data-hand="left"></button></div>' +
+              '<button type="button" class="qx-btn qx-btn-solid qx-btn-hold qm-pour"><span></span></button></div></div>';
+          el.appendChild(root);
+          root.querySelectorAll('.qa-guest').forEach(function (gEl) {
+            var k = gEl.getAttribute('data-guest');
+            gEl.addEventListener('click', function () { if (stageApi.started()) select(k); });
+          });
+          root.querySelectorAll('.qm-hand').forEach(function (b) { b.addEventListener('click', function () { M.hand = b.getAttribute('data-hand'); sfx('tap'); paintHands(); }); });
+          wireHold(root.querySelector('.qm-pour'), {
+            onStart: function () { if (!stageApi.started()) return; pourSound(true); M.pouring = true; },
+            onTick: function (dt) { if (!M.pouring) return false; M.l = clamp(M.l + dt * 0.3, 0, 1); drawCup(); if (M.l >= 0.9) return false; },
+            onEnd: function () { pourSound(false); if (!M.pouring) return; M.pouring = false; served(); }
+          });
+          labelsMJ(); paintHands();
+        },
+        onLanguage: labelsMJ
       });
     }).catch(function (e) { console.error(e); toast({ en: 'Abu Fahad could not be reached. Try again.', ar: 'ما قدرنا نوصل لأبو فهد. جرّب مرة ثانية.' }); });
   }
