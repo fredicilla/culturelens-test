@@ -20,7 +20,7 @@ export function llmConfig() {
   return {
     baseUrl: env('LLM_BASE_URL', 'https://api.groq.com/openai/v1').replace(/\/+$/, ''),
     apiKey: env('LLM_API_KEY') || env('GROQ_API_KEY'),
-    models: env('LLM_MODELS', 'qwen/qwen3.8-27b,openai/gpt-oss-120b,openai/gpt-oss-20b,llama-3.3-70b-versatile')
+    models: env('LLM_MODELS', 'qwen/qwen3.8-27b,openai/gpt-oss-120b,openai/gpt-oss-20b')
       .split(',').map((s: string) => s.trim()).filter(Boolean),
   };
 }
@@ -42,14 +42,16 @@ export function stripThink(s: string | null | undefined): string {
 
 export async function chat(
   messages: Msg[], tools: ToolDef[],
-  opts: { temperature?: number; max_tokens?: number; tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } }; fetchImpl?: typeof fetch } = {},
+  opts: { temperature?: number; max_tokens?: number; tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } }; fetchImpl?: typeof fetch; skipFirst?: boolean } = {},
 ): Promise<ChatOut> {
   const cfg = llmConfig();
   const f = opts.fetchImpl ?? fetch;
   const tries: string[] = [];
   let lastErr = 'no model available';
   const t0 = Date.now();
-  for (const model of cfg.models) {
+  // a retry after an empty line starts from the next model, so the same glitch is not asked for twice
+  const order = opts.skipFirst && cfg.models.length > 1 ? [...cfg.models.slice(1), cfg.models[0]] : cfg.models;
+  for (const model of order) {
     if ((restUntil.get(model) ?? 0) > Date.now()) { tries.push(model + ':resting'); continue; }
     let extras = extrasFor(model);
     for (let attempt = 0; attempt < 3; attempt++) {

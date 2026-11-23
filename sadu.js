@@ -249,7 +249,7 @@ var G = {
   introT: { en: 'Weave for Grandma Haya', ar: 'انسج للجدة هيا' },
   introP: { en: 'Grandma Haya has woven Sadu all her life. First, show her you can read a Sadu. Then race her: two looms, the same band, and whoever reaches the end first wins.', ar: 'الجدة هيا تنسج السدو من عمرها. أول شي، وريها إنك تعرف تقرا السدو. وبعدين سابقها: نولين، نفس القطعة، واللي يوصل للآخر أول يفوز.' },
   start: { en: 'Start', ar: 'يلا نبدأ' },
-  r1: { en: 'Round 1 · Read the Sadu', ar: 'الجولة ١ · اقرا السدو' },
+  r1: { en: 'Round 1 · Read the Sadu', ar: 'الجولة ١: اقرا السدو' },
   again: { en: 'Play again', ar: 'العب مرة ثانية' }, finish: { en: 'Finish', ar: 'إنهاء' },
   learned: { en: 'What you learned', ar: 'وش تعلمت' },
   score: { en: 'Score', ar: 'النقاط' },
@@ -261,7 +261,7 @@ var G = {
   aiGo: { en: 'Sit with her', ar: 'اجلس معها' }
 };
 var R = {
-  title: { en: 'Round 2 · The race', ar: 'الجولة ٢ · السباق' },
+  title: { en: 'Round 2 · The race', ar: 'الجولة ٢: السباق' },
   level: { en: 'Level', ar: 'المستوى' },
   intro: { en: 'Now show me your hands. We weave the same band, you on your loom and me on mine. First to the end wins. I will give you a head start.', ar: 'الحين وريني شغل يدينك. بننسج نفس القطعة، أنت على نولك وأنا على نولي، واللي يوصل للآخر أول يفوز. وبعطيك سبق.' },
   intro2: { en: 'Again? This time I will not go easy on you.', ar: 'مرة ثانية؟ هالمرة ما راح أرحمك.' },
@@ -1233,7 +1233,7 @@ function renderIntro() {
 function renderQuestion() {
   var g = S.game, q = QUESTIONS[g.qi], opts = g.order[g.qi], ans = g.answered;
   if (!S.inAR) world.view('loom', { k: 1.2 });
-  var html = '<div class="qx-kicker">' + L(G.r1) + ' · ' + num(g.qi + 1) + '/' + num(QUESTIONS.length) + '</div>' +
+  var html = '<div class="qx-kicker">' + L(G.r1) + ' (' + num(g.qi + 1) + '/' + num(QUESTIONS.length) + ')</div>' +
     '<h2 class="mq-title sd-q">' + L(q.prompt) + '</h2>';
   if (q.show) html += '<div class="sd-preview" id="sd-show"></div>';
   html += '<div class="sd-opts sd-opts-' + q.kind + '">' + opts.map(function (k) {

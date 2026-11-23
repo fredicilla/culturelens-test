@@ -303,8 +303,8 @@ var G = {
   introT: { en: 'Join the Samri', ar: 'ادخل السامري' },
   introP: { en: 'First, show the mu\'allim what you know. Then sit at the end of his row and keep up with a whole Samri. For every passage you get right, he calls you one seat closer.', ar: 'أول شي، وري المعلّم وش تعرف. وبعدين اجلس بطرف صفّه وجاري سامري كامل. وكل طلعة تضبطها، يقرّبك مكان منه.' },
   start: { en: 'Start', ar: 'يلا نبدأ' },
-  r1: { en: 'Round 1 · What do you know?', ar: 'الجولة ١ · وش تعرف؟' },
-  r2: { en: 'Round 2 · Move up the row', ar: 'الجولة ٢ · تقدّم بالصف' },
+  r1: { en: 'Round 1 · What do you know?', ar: 'الجولة ١: وش تعرف؟' },
+  r2: { en: 'Round 2 · Move up the row', ar: 'الجولة ٢: تقدّم بالصف' },
   again: { en: 'Play again', ar: 'العب مرة ثانية' }, finish: { en: 'Finish', ar: 'إنهاء' },
   learned: { en: 'What you learned', ar: 'وش تعلمت' },
   score: { en: 'Score', ar: 'النقاط' },
@@ -1312,7 +1312,7 @@ function renderIntro() {
 }
 function renderQuestion() {
   var g = S.game, q = QUESTIONS[g.qi], opts = g.order[g.qi], ans = g.answered;
-  var html = '<div class="qx-kicker">' + L(G.r1) + ' · ' + num(g.qi + 1) + '/' + num(QUESTIONS.length) + '</div>' +
+  var html = '<div class="qx-kicker">' + L(G.r1) + ' (' + num(g.qi + 1) + '/' + num(QUESTIONS.length) + ')</div>' +
     '<h2 class="mq-title sm-q">' + L(q.prompt) + '</h2>';
   html += '<div class="sm-opts">' + opts.map(function (k) {
     var cls = 'sm-opt';

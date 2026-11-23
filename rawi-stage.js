@@ -151,7 +151,8 @@ function close() {
 }
 function begin() {
   if (window.clSound) window.clSound.prime();
-  S.agent = createRawi({ experience: S.cfg.experience, actions: S.cfg.actions || {} });
+  // the face moves with the voice itself (it can take a moment to arrive), not with a guess at its length
+  S.agent = createRawi({ experience: S.cfg.experience, actions: S.cfg.actions || {}, onLevel: talking });
   S.started = true; talkUI();
   if (S.cfg.onStart) try { S.cfg.onStart(); } catch (e) {}
   send({ type: 'start', context: S.cfg.context || { page: S.cfg.experience } });
@@ -173,10 +174,15 @@ async function send(input, ending) {
   }
   say(esc(r.say));
   $('#rg-heard').textContent = input.audio && r.heard && r.heard.text ? L(T.you) + r.heard.text : '';
-  const face = $('#rg-face'); face.classList.add('talk'); clearTimeout(S.talkT); S.talkT = setTimeout(() => face.classList.remove('talk'), 1200 + String(r.say || '').length * 65);
   if (S.cfg.onReply) try { S.cfg.onReply(r); } catch (e) {}
   if (ending) { $('#rg-form').hidden = true; buttons([{ label: T.close, onClick: close }]); return; }
   if (S.queue.length) { const next = S.queue.shift(); S.queue = []; setTimeout(() => send(next), 400); }
+}
+// the face keeps moving through the short gaps between words, and stops a moment after the voice does
+function talking(v) {
+  if (v <= 0.1) return;
+  const f = $('#rg-face'); f.classList.add('talk');
+  clearTimeout(S.quietT); S.quietT = setTimeout(() => f.classList.remove('talk'), 320);
 }
 function lock(on) { $('#rg-btns').querySelectorAll('button').forEach((b) => (b.disabled = on)); $('#rg-in').disabled = on; $('#rg-send').disabled = on; }
 

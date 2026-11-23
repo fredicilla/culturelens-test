@@ -266,7 +266,7 @@ function buttons(list) {
 function who(o, you) { const w = $('#sp-who'); w.textContent = o ? L(o) : ''; w.classList.toggle('you', !!you); }
 function lvl(d) {
   const e = $('#sp-lvl'); if (!d) { e.hidden = true; return; }
-  e.hidden = false; e.textContent = L(T.level) + ' ' + num(d.level) + ' · ' + L(T.mv[d.move] || T.mv.answer) + ' · ' + L(T[d.style] || T.heavy);
+  e.hidden = false; e.textContent = [L(T.level) + ' ' + num(d.level), L(T.mv[d.move] || T.mv.answer), L(T[d.style] || T.heavy)].join((isAr() ? '، ' : ' · '));
 }
 function finishButton() { return { label: T.finish, ghost: true, onClick: () => { stopDrill(); S.pending = null; rawi.finish(); buttons([{ label: T.close, onClick: close }]); } }; }
 function idleButtons() {
@@ -761,7 +761,7 @@ function showResult(m) {
   const s = m.strikes;
   if (s) {
     const tm = s.mean_offset_ms == null ? '' : Math.abs(s.mean_offset_ms) <= 60 ? L(T.ontime) : num(Math.abs(s.mean_offset_ms)) + ' ' + L(T.ms) + ' ' + L(s.mean_offset_ms < 0 ? T.early : T.late);
-    chip(T.strikes, num(s.hit) + '/' + num(s.expected) + (tm ? ' · ' + tm : ''));
+    chip(T.strikes, num(s.hit) + '/' + num(s.expected) + (tm ? (isAr() ? '، ' : ' · ') + tm : ''));
     if (m.voice && !m.voice.present) chip(T.noVoice, '', true);
   }
   const mv = m.moves || {};

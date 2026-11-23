@@ -92,7 +92,7 @@ export function voiceFor(lang: string, voice: string, accent = '') {
 export async function speech(body: any, deps: Deps = {}): Promise<Spoken> {
   const lang = body?.lang === 'en' ? 'en' : 'ar';
   const text = clean(body?.text).slice(0, MAX);
-  if (!text) return { error: 'empty', status: 400 };
+  if (!text || !/[\p{L}\p{N}]/u.test(text)) return { error: 'empty', status: 400 };     // nothing to say (a lone "." from the model)
   const { model, voice } = voiceFor(lang, body?.voice, body?.accent);
   const path = voice + '/' + (await sha(model + '|' + voice + '|' + text)) + '.wav';
   // heard before: from Storage

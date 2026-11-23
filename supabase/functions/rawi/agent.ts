@@ -29,9 +29,15 @@ export function arabicShare(s: string) {
 
 function langLine(lang: string) {
   return lang === 'ar'
-    ? 'in Saudi Najdi Arabic, warm and simple, the way the app itself speaks (حط، خلها، زين، وش). Address them in the masculine singular like the app does (اجلس، اضرب، جرّب), and in the feminine only once you know the learner is a woman (her name, her own words)'
-    : 'in simple, warm English; keep the Arabic names of things (tar, dallah, najr) and give their meaning the first time';
+    ? 'in Saudi Najdi Arabic, warm and simple, the way the app itself speaks (حط، خلها، زين، وش). Address them in the masculine singular like the app does (اجلس، اضرب، جرّب), and in the feminine only once you know the learner is a woman (her name, her own words).\n' +
+      'Najdi, not Fusha and not another dialect: وش (not ماذا/شو/إيش)، ليش، وين، الحين، شوي، زين، أبشر، يا هلا، تكفى، مرّة، واجد. Never Egyptian, Levantine or Kuwaiti words (ده، كده، هلّأ، هيك، بدّك، منو، شلون) and no سوف/لماذا/هل. ' +
+      'The right words: الفنجال (never الكأس or الكوب)، الدلة (never الديلة or الإبريق)، القهوة، الهيل، التمر، المجلس، الطار، المصقال. ' +
+      'Never call the learner by a name they did not tell you, and never by your own name or a guest\'s name. No notes or stage directions in brackets: everything you write is said out loud.'
+    : 'in simple, warm English; keep the Arabic names of things (tar, dallah, finjan, najr) and give their meaning the first time. Never call the learner by a name they did not tell you';
 }
+
+// what is said out loud must have words in it (a model now and then answers with a lone "." or nothing)
+const letters = (s: string) => (String(s || '').match(/[\p{L}\p{N}]/gu) || []).length;
 
 const LEVELS: Record<number, string> = { 1: 'the other row answers first, words shown', 2: 'right after the call, words shown', 3: 'from memory, no words', 4: 'the learner leads the call' };
 
@@ -156,6 +162,7 @@ export function systemPrompt(exp: string, lang: string, memories: Memory[], atte
     `You are Rawi, the heritage agent of CultureLens, a Saudi heritage app. Here you are ${p.name.en} (${p.name.ar}): ${p.role}`,
     `Speak to the learner ${langLine(lang)}. You are speaking out loud: one to three short sentences, no lists, no emojis, no markdown.`,
     'Heritage facts only from this prompt or from search_heritage. What you say about the learner only from the measurements you are given: if something was not measured this time (no words, no voice), say nothing about it. Never invent either.',
+    'The ear sometimes mishears: when what the learner said is unclear, a stray word, or does not fit what you asked, say kindly that you did not catch it and ask again. Never treat it as a wrong answer and never guess what they meant.',
     'Act through your tools, and put your spoken line in the same message as your tool calls. A tool runs only when you call it: never write a tool name or JSON in what you say, and only announce what your calls actually do. Use remember for what is worth keeping across visits: their name, what they love, a skill they now have, a mistake they keep making.',
     p.playbook,
     'What you remember about this learner, from every experience:\n' + memLines(memories),
@@ -320,7 +327,33 @@ export async function handleTurn(body: TurnBody, deps: Deps) {
       if (!say) say = sv.text;
     } catch (e) { log('error', 'self-check', { error: String(e).slice(0, 300) }); }
   }
+  // the actions a turn must end with: after an event that asks for one, or when the line says it was done without the call
+  const must = (persona.must || []).find((m) => !ctx.actions.some((x) => x.name === m.tool) &&
+    ((m.event && input.type === 'event' && input.name === m.event) || (m.claim && new RegExp(m.claim, 'i').test(say))));
+  if (must) {
+    messages.push({ role: 'user', content: `[${must.why} Call ${must.tool} now; keep what you told them true.]` });
+    try {
+      const out = await chat(messages, toolDefs([must.tool]), { temperature: 0.3, max_tokens: 400, tool_choice: { type: 'function', function: { name: must.tool } } });
+      log('model', out.model, { usage: out.usage, tries: out.tries, check: must.tool }, out.ms, 'self-check: ' + must.tool);
+      const sv = salvageCalls(out.msg.content || '', [must.tool]);
+      const fromText = !out.msg.tool_calls?.length;
+      const calls = (fromText ? textCalls(sv.calls, 'must') : out.msg.tool_calls!).slice(0, 1);
+      if (calls.length) { messages.push({ role: 'assistant', content: '', tool_calls: calls }); await runCalls(calls, fromText); }
+      if (letters(say) < 4 && letters(sv.text) >= 4) say = sv.text;
+    } catch (e) { log('error', 'must', { error: String(e).slice(0, 300) }); }
+  }
   say = say.replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 600);
+  // an empty line (a lone "." or nothing) is asked for again, from the next model; failing that, a short line of the role's own
+  if (letters(say) < 4) {
+    log('error', 'empty line', { say });
+    try {
+      const out = await chat([...messages, { role: 'user', content: '[Say your line to the learner now: one to three short spoken sentences, only the words you say.]' }], [], { temperature: 0.6, max_tokens: 220, skipFirst: true });
+      const t = salvageCalls(out.msg.content || '', persona.tools).text.replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim();
+      log('model', out.model, { usage: out.usage, tries: out.tries, retry: 'empty line' }, out.ms, 'said again: ' + t.slice(0, 80));
+      if (letters(t) >= 4) say = t.slice(0, 600);
+    } catch (e) { log('error', 'retry', { error: String(e).slice(0, 300) }); }
+    if (letters(say) < 4) say = (input.type === 'start' ? persona.hello : persona.again)?.[lang as 'ar' | 'en'] || (lang === 'ar' ? 'سم؟ عيدها علي.' : 'Sorry, say that again?');
+  }
   // Arabic mode always speaks Arabic: a reply that came out in English is put into Saudi Arabic before it is said
   if (lang === 'ar' && say && arabicShare(say) < 0.5) {
     try {

@@ -478,7 +478,7 @@
   function the(nameEn) { return /Region$/.test(nameEn) ? 'the ' + nameEn : nameEn; }
   function guideURL(id) { return 'experience.html?x=' + encodeURIComponent(id); }
   function metaFor(it) {
-    if (it.page) return { en: 'History, AR, game · ' + it.mins + ' min', ar: 'قصة، واقع معزز، لعبة · ' + arNum(it.mins) + ' دقايق' };
+    if (it.page) return { en: 'History, AR, game · ' + it.mins + ' min', ar: 'قصة، واقع معزز، لعبة (' + arNum(it.mins) + ' دقايق)' };
     return { en: it.place.en, ar: it.place.ar };
   }
 

@@ -40,7 +40,7 @@ function fahadSays(text) {
   else bubble({ en: text, ar: text }, Math.min(12000, 2800 + text.length * 60), true);
   if (!S.sound || !AI.mod) return;
   // Fahad is the neighbor's boy: a young voice (Noura's, a little higher, same speed)
-  AI.mod.speak(text, isAr() ? 'ar' : 'en', { voice: 'noura', pitch: 1.18, onLevel: function (v) {
+  AI.mod.speak(text, isAr() ? 'ar' : 'en', { voice: 'noura', pitch: 1.12, onLevel: function (v) {
     var b = $('#mq-bubble'), face = b && b.classList.contains('show') ? b : q;
     if (face) face.classList.toggle('talk', v > 0.12);
   } });
@@ -719,7 +719,7 @@ function renderTurnPanel() {
   var g = S.game, who = g.turn, left = MAX_SHOTS - g.shots[who];
   panel.className = 'mq-panel mq-panel-play';
   if (who === 'me') {
-    panel.innerHTML = '<div class="mq-turn me">' + L(G_TEXT.yourTurn) + '<small>' + L(g.lie.me ? G_TEXT.fromLie : G_TEXT.fromLine) + ' · ' + num(left) + ' ' + L(G_TEXT.shots) + '</small></div>' +
+    panel.innerHTML = '<div class="mq-turn me">' + L(G_TEXT.yourTurn) + '<small>' + L(g.lie.me ? G_TEXT.fromLie : G_TEXT.fromLine) + (isAr() ? '، ' : ' · ') + num(left) + ' ' + L(G_TEXT.shots) + '</small></div>' +
       '<p class="mq-p small">' + L(G_TEXT.aimHint) + '</p>';
   } else {
     panel.innerHTML = '<div class="mq-turn fahad">' + L(G_TEXT.hisTurn) + '<small>' + L(G_TEXT.hisAim) + '</small></div>';

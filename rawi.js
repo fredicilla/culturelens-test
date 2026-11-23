@@ -109,6 +109,7 @@ export function voicePieces(text) {
 // speaks that language until then
 let restingTill = {};
 try { restingTill = JSON.parse(sessionStorage.getItem('cl_voice_rest') || '{}') || {}; } catch (e) {}
+try { if (!localStorage.getItem('cl_voice_fix2')) { localStorage.setItem('cl_voice_fix2', '1'); restingTill = {}; sessionStorage.removeItem('cl_voice_rest'); } } catch (e) {}
 function restVoice(lang, ms) { restingTill[lang] = Date.now() + ms; try { sessionStorage.setItem('cl_voice_rest', JSON.stringify(restingTill)); } catch (e) {} }
 // every line, English too, is read by the Saudi voice (the Arabic-accented English the team loves)
 async function fetchVoice(text, lang, voice, signal) {
@@ -117,9 +118,18 @@ async function fetchVoice(text, lang, voice, signal) {
   const res = await fetch(ep.url, { method: 'POST', headers, body: JSON.stringify({ action: 'tts', text, lang: 'ar', accent: 'saudi', voice, device: deviceKey() }), signal });
   if (!res.ok || !/audio/.test(res.headers.get('content-type') || '')) {
     const j = await res.json().catch(() => ({}));
-    const e = new Error(j.error || 'voice ' + res.status); e.retry = j.retry_ms || (res.status === 429 ? 10 * 60e3 : 0); e.hard = res.status === 400; throw e;
+    // only a voice that is not open on the account (its terms) rests; a line it could not read (empty) does not
+    const e = new Error(j.error || 'voice ' + res.status); e.retry = j.retry_ms || (res.status === 429 ? 10 * 60e3 : 0); e.hard = j.error === 'terms'; throw e;
   }
   return res.arrayBuffer();
+}
+// one more try after a moment: a dropped connection or a busy second should not hand the line to the phone's own
+// (robotic) voice. A voice that is not open, an empty line or a long rest is not tried again.
+function fetchVoiceTry(text, lang, voice, signal) {
+  return fetchVoice(text, lang, voice, signal).catch((e) => {
+    if ((signal && signal.aborted) || (e && (e.hard || e.message === 'empty' || e.message === 'off' || e.retry > 5000))) throw e;
+    return later(700).then(() => fetchVoice(text, lang, voice, signal));
+  });
 }
 function decode(ctx, buf) {
   return new Promise((ok, bad) => { try { const p = ctx.decodeAudioData(buf, ok, bad); if (p && p.then) p.then(ok, bad); } catch (e) { bad(e); } });
@@ -205,14 +215,14 @@ export function speak(text, lang, opts) {
   const finish = () => { if (current && current.my === my) current = null; };
   return (async () => {
     // the experiences' mute button holds for lines that come by themselves; a line the visitor asked to hear (force) plays
-    if (!text || (store('cl_sound') === 'off' && !opts.force)) return finish();
+    if (!text || !/[\p{L}\p{N}]/u.test(String(text)) || (store('cl_sound') === 'off' && !opts.force)) return finish();
     lang = lang === 'en' ? 'en' : 'ar';
     let left = String(text);
     const s = sound(), ctx = s ? s.ctx() : null;
     if (ctx && ctx.state !== 'running') { try { await timeout(ctx.resume(), 400); } catch (e) {} }
     if (opts.voice !== false && ctx && ctx.state === 'running' && endpoint() && Date.now() > (restingTill[lang] || 0) && store('cl_voice') !== 'device') {
       const parts = voicePieces(text), got = [];
-      const get = (i) => (got[i] = got[i] || fetchVoice(parts[i], lang, opts.voice || 'fahad', current && current.ctrl ? current.ctrl.signal : undefined).then((b) => decode(ctx, b)).then((ab) => opts.pitch ? pitchUp(ctx, ab, opts.pitch) : ab));
+      const get = (i) => (got[i] = got[i] || fetchVoiceTry(parts[i], lang, opts.voice || 'fahad', current && current.ctrl ? current.ctrl.signal : undefined).then((b) => decode(ctx, b)).then((ab) => opts.pitch ? pitchUp(ctx, ab, opts.pitch) : ab));
       let i = 0;
       try {
         for (; i < parts.length; i++) {
@@ -445,7 +455,7 @@ export function createRawi(opts) {
     session = r.session_id; try { sessionStorage.setItem('cl_rawi_s_' + exp, session); } catch (e) {}
     if (ui) { ui.reply(r.say, input.type === 'say' ? r.heard : null); ui.trace(r.trace); }
     listeners.reply.forEach((f) => { try { f(r); } catch (e) {} });
-    const spoken = opts.speak === false ? Promise.resolve() : speak(r.say, isAr() ? 'ar' : 'en', { voice: VOICE[exp] });
+    const spoken = opts.speak === false ? Promise.resolve() : speak(r.say, isAr() ? 'ar' : 'en', { voice: VOICE[exp], onLevel: opts.onLevel });
     (r.actions || []).forEach((a) => { const f = handlers[a.name]; if (f) { try { f(a.args, spoken); } catch (e) { console.warn('rawi action', a.name, e); } } });
     if (pendingEvent) { const ev = pendingEvent; pendingEvent = null; setTimeout(() => api.turn(ev), 0); }
     return r;

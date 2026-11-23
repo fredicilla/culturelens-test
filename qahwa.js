@@ -231,8 +231,8 @@
     introTitle: { en: 'Serve with honor', ar: 'صب لضيوفك بأصول' },
     introSub: { en: 'Four men are seated in your majlis. Serve them the Najdi way: the right order, the right hand, the right amount. Then watch their cups.', ar: 'أربعة رجال جالسين بمجلسك. صب لهم على السلوم النجدية: بالترتيب الصح، وباليد الصح، وبالمقدار الصح. وبعدين انتبه لفناجيلهم.' },
     start: { en: 'Start serving', ar: 'ابدأ الصب' },
-    round1: { en: 'Round 1 · The order', ar: 'الجولة ١ · الترتيب' },
-    round2: { en: 'Round 2 · Read the cup', ar: 'الجولة ٢ · اقرأ الفنجال' },
+    round1: { en: 'Round 1 · The order', ar: 'الجولة ١: الترتيب' },
+    round2: { en: 'Round 2 · Read the cup', ar: 'الجولة ٢: اقرأ الفنجال' },
     pickFirst: { en: 'Who gets the first cup?', ar: 'لمن أول فنجال؟' },
     pickNext: { en: 'Who is next?', ar: 'مين بعده؟' },
     pickSub: { en: 'Tap a man in the majlis.', ar: 'اضغط على واحد من اللي بالمجلس.' },
@@ -1183,7 +1183,7 @@
       html = '<div class="qx-round">' + L(G_TEXT.round1) + '</div><h2 class="qx-prompt">' + L(G_TEXT.introTitle) + '</h2><p class="qx-sub">' + L(G_TEXT.introSub) + '</p>';
       setBar({ buttons: [{ label: G_TEXT.start, icon: 'next', onClick: function () { g.phase = 'pick'; g.fb = null; drawGuests(); renderGameCard(); renderParts(); } }] });
     } else if (g.phase === 'pick') {
-      html = '<div class="qx-round">' + L(G_TEXT.round1) + ' · ' + num(g.turn + 1) + '/' + num(ORDER.length) + '</div>' +
+      html = '<div class="qx-round">' + L(G_TEXT.round1) + ' (' + num(g.turn + 1) + '/' + num(ORDER.length) + ')</div>' +
         '<h2 class="qx-prompt">' + L(g.turn === 0 ? G_TEXT.pickFirst : G_TEXT.pickNext) + '</h2><p class="qx-sub">' + L(G_TEXT.pickSub) + '</p>' + feedbackHTML(g);
       bar.innerHTML = '';
     } else if (g.phase === 'hand') {
@@ -1193,7 +1193,7 @@
         { label: G_TEXT.right, kind: 'line', onClick: function () { answerHand('right'); } }
       ] });
     } else if (g.phase === 'pour') {
-      html = '<div class="qx-round">' + L(G_TEXT.round1) + ' · ' + num(g.turn + 1) + '/' + num(ORDER.length) + '</div>' +
+      html = '<div class="qx-round">' + L(G_TEXT.round1) + ' (' + num(g.turn + 1) + '/' + num(ORDER.length) + ')</div>' +
         '<div style="display:flex;gap:14px;align-items:center">' +
           '<svg class="qx-mini-cup" viewBox="0 0 100 80" id="qx-mini">' + QArt.finjan(g.l) + '</svg>' +
           '<div><h2 class="qx-prompt">' + L(G_TEXT.pourQ) + L(gu.name) + '</h2><p class="qx-sub">' + L(G_TEXT.pourSub) + '</p></div>' +
@@ -1203,7 +1203,7 @@
       setBar({ buttons: [{ label: G_TEXT.holdPour, id: 'qx-cta', hold: gamePourHold() }] });
     } else if (g.phase === 'read') {
       var r = READS[g.readIdx], rg = GUESTS[r.key];
-      html = '<div class="qx-round">' + L(G_TEXT.round2) + ' · ' + num(g.readIdx + 1) + '/' + num(READS.length) + '</div>' +
+      html = '<div class="qx-round">' + L(G_TEXT.round2) + ' (' + num(g.readIdx + 1) + '/' + num(READS.length) + ')</div>' +
         '<h2 class="qx-prompt">' + L(rg.name) + L(G_TEXT.readQ) + '</h2><p class="qx-sub">' + L(r.shake ? G_TEXT.shakes : G_TEXT.still) + '</p>' + feedbackHTML(g);
       setBar({ buttons: [
         { label: G_TEXT.pourMore, kind: 'line', onClick: function () { answerRead('pour'); } },

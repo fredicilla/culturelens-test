@@ -15,6 +15,41 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// The team's real models: the Saudi dallah (the long beak spout, the waist, the crowned lid with its finial, the Saudi
+// emblem) and the finjan with its red and green leaves. The drawn ones below stand in until they arrive (or if they can't).
+const MODELS = { dallah: 'saudi_dallah.glb', finjan: 'arabic_coffee_cup.glb' };
+let gltf = null;
+function loadModel(name) {
+  gltf ??= new GLTFLoader();
+  const url = (window.CL_MODEL_URLS && window.CL_MODEL_URLS[name]) || name;
+  return new Promise((res, rej) => gltf.load(url, (g) => res(g.scene), undefined, rej));
+}
+// the highest point (the tip of the lid's finial: the dallah's axis), the point farthest to -x (the spout's tip)
+// and the one farthest to +x (the outside of the handle)
+function extremes(obj) {
+  const v = new THREE.Vector3(); let top = null, left = null, right = null;
+  obj.updateMatrixWorld(true);
+  obj.traverse((m) => {
+    if (!m.isMesh) return;
+    const p = m.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); if (!top || v.y > top.y) top = v.clone(); if (!left || v.x < left.x) left = v.clone(); if (!right || v.x > right.x) right = v.clone(); }
+  });
+  return { top, left, right };
+}
+// a model made `height` meters tall, standing on y = 0, with its axis at x = z = 0 (the finial for the dallah, the middle for a cup)
+function fitModel(obj, height, byTop) {
+  obj.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(obj);
+  obj.scale.multiplyScalar(height / box.getSize(new THREE.Vector3()).y); obj.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(obj);
+  const ax = byTop ? extremes(obj).top : box.getCenter(new THREE.Vector3());
+  obj.position.x -= ax.x; obj.position.z -= ax.z; obj.position.y -= box.min.y;
+  obj.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; if (m.material) m.material.envMapIntensity = 1.4; } });
+  obj.updateMatrixWorld(true);
+  return obj;
+}
 
 // ─────────────────────────────────────────────────────────────
 // textures, drawn on canvases
@@ -91,6 +126,7 @@ function makeDallah(brass, dark) {
   const handle = tube([[0.03, 0.172, 0], [0.068, 0.182, 0], [0.084, 0.15, 0], [0.078, 0.1, 0], [0.058, 0.062, 0]], 0.0055, brass);
   g.add(handle);
   g.userData.spoutTip = new THREE.Vector3(-0.134, 0.214, 0);
+  g.userData.grip = new THREE.Vector3(0.074, 0.14, 0);     // where the hand holds the handle
   return g;
 }
 
@@ -98,9 +134,9 @@ function makeDallah(brass, dark) {
 function makeFinjan(porcelain, gold, coffee) {
   const g = new THREE.Group();
   const cup = lathe([[0, 0], [0.018, 0], [0.02, 0.003], [0.024, 0.018], [0.03, 0.042], [0.0315, 0.046], [0.0295, 0.046], [0.0278, 0.042], [0.022, 0.019], [0.0, 0.006]], porcelain);
-  g.add(cup);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.0305, 0.0012, 8, 48), gold); rim.rotation.x = Math.PI / 2; rim.position.y = 0.046; g.add(rim);
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0248, 0.0243, 0.003, 40, 1, true), gold); band.position.y = 0.02; g.add(band);
+  cup.userData.drawn = true; g.add(cup);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.0305, 0.0012, 8, 48), gold); rim.rotation.x = Math.PI / 2; rim.position.y = 0.046; rim.userData.drawn = true; g.add(rim);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0248, 0.0243, 0.003, 40, 1, true), gold); band.position.y = 0.02; band.userData.drawn = true; g.add(band);
   const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), coffee); fill.rotation.x = -Math.PI / 2; fill.visible = false; g.add(fill);
   // the quarter line, a thin gold ring inside the cup
   const line = new THREE.Mesh(new THREE.TorusGeometry(0.0238, 0.0007, 6, 48), new THREE.MeshBasicMaterial({ color: 0xFFD27A })); line.rotation.x = Math.PI / 2; line.position.y = 0.0215; g.add(line);
@@ -128,7 +164,7 @@ const VIEWS = {
   brew: [[-0.04, 0.33, 0.48], [0.0, 0.15, 0.0]],
   spices: [[-0.26, 0.42, 0.46], [-0.26, 0.04, 0.1]],
   settle: [[0.12, 0.33, 0.52], [0.16, 0.12, 0.06]],
-  pour: [[-0.02, 0.3, 0.42], [0.06, 0.12, 0.16]],
+  pour: [[0.2, 0.25, 0.5], [0.205, 0.095, 0.18]],
   done: [[0.0, 0.4, 0.62], [0.04, 0.1, 0.08]]
 };
 const SPICE_KEYS = ['cardamom', 'cloves', 'saffron', 'sugar', 'milk'];
@@ -228,11 +264,35 @@ export function createWorld(el, opts = {}) {
   const najrHit = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.42, 12), new THREE.MeshBasicMaterial({ visible: false })); najrHit.position.y = 0.18; najrHit.userData.tap = 'najr'; najr.add(najrHit);
 
   // the dallah
-  const dallah = makeDallah(M.brass, M.brassDark); scene.add(dallah);
+  // the drawn dallah waits hidden: the Saudi one is shown as soon as it loads, the drawn one only if it can't
+  const dallah = makeDallah(M.brass, M.brassDark); dallah.visible = false; scene.add(dallah);
+  const showDrawn = setTimeout(() => { dallah.visible = true; }, 9000);
   // the finjan on a small tray, with dates
   const tray = lathe([[0, 0], [0.11, 0], [0.12, 0.008], [0.116, 0.01], [0.105, 0.004], [0, 0.004]], M.brassDark); tray.position.set(0.12, 0, 0.17); scene.add(tray);
   const finjan = makeFinjan(M.porcelain, M.gold, M.coffee); finjan.position.set(0.09, 0.004, 0.18); scene.add(finjan);
   const finjan2 = makeFinjan(M.porcelain, M.gold, M.coffee); finjan2.position.set(0.16, 0.004, 0.13); finjan2.userData.line.visible = false; scene.add(finjan2);
+  // the real models replace the drawn ones as soon as they arrive
+  loadModel(MODELS.dallah).then((m) => {
+    if (!running) return;
+    const holder = new THREE.Group(); holder.add(fitModel(m, 0.27, true));
+    const e = extremes(holder);
+    dallah.clear(); dallah.add(holder);
+    dallah.userData.spoutTip = e.left.clone();
+    dallah.userData.grip = new THREE.Vector3(e.right.x - 0.012, e.right.y, 0);
+    clearTimeout(showDrawn); dallah.visible = true;
+    if (st.key === 'pour') placeHand();
+  }).catch((err) => { console.warn('dallah model', err); clearTimeout(showDrawn); dallah.visible = true; });
+  loadModel(MODELS.finjan).then((m) => {
+    if (!running) return;
+    [finjan, finjan2].forEach((f, i) => {
+      const cup = fitModel(i ? m.clone(true) : m, 0.047, false);
+      f.children.filter((c) => c.userData.drawn).forEach((c) => f.remove(c));
+      f.add(cup);
+      // its inside: about 2.5 cm across at the bottom, 6 cm at the rim
+      f.userData.radiusAt = (h) => 0.0125 + 0.018 * Math.max(0, h - 0.004) / 0.043;
+      const ly = 0.006 + 0.28 * 0.04; f.userData.line.position.y = ly; f.userData.line.scale.setScalar(f.userData.radiusAt(ly) / 0.0238);
+    });
+  }).catch((err) => console.warn('finjan model', err));
   const plate = lathe([[0, 0], [0.05, 0], [0.058, 0.01], [0.054, 0.011], [0.046, 0.004], [0, 0.003]], M.porcelain); plate.position.set(0.2, 0.004, 0.22); scene.add(plate);
   { const R = rng(9); for (let i = 0; i < 6; i++) { const d = new THREE.Mesh(new THREE.SphereGeometry(0.009, 12, 10).scale(1, 0.75, 1.9), M.date); const a = i / 6 * Math.PI * 2; d.position.set(0.2 + Math.cos(a) * 0.022, 0.014, 0.22 + Math.sin(a) * 0.022); d.rotation.y = a + R(); d.castShadow = true; scene.add(d); } }
   // the pour: a stream from the spout down into the finjan
@@ -269,7 +329,17 @@ export function createWorld(el, opts = {}) {
   const st = { key: 'roast', r: 0, stirring: false, strikeT: 9, ringT: 9, spoonT: 9, spoons: 0, heat: 1, steam: 0, picked: {}, l: 0, pouring: false, tilt: 0 };
   const cam = { pos: new THREE.Vector3(...VIEWS.roast[0]), target: new THREE.Vector3(...VIEWS.roast[1]), toPos: new THREE.Vector3(...VIEWS.roast[0]), toTarget: new THREE.Vector3(...VIEWS.roast[1]), yaw: 0, yawTo: 0 };
   // where the dallah stands: on the fire, beside it, or in the hand over the finjan
-  const DALLAH_AT = { fire: [0, 0.096, 0, 0], side: [0.17, 0, 0.02, 0.4], hand: [0.13, 0.11, 0.18, 0], shelf: [-0.08, 0, -0.18, 0.8] };
+  const DALLAH_AT = { fire: [0, 0.096, 0, 0], side: [0.17, 0, 0.02, 0.4], rest: [0.3, 0, 0.21, 0], hand: [0.29, 0.06, 0.18, 0], shelf: [-0.08, 0, -0.18, 0.8] };
+  const TILT = 0.85;   // radians at full pour
+  // The hand holds the dallah by its handle and pours by turning it about the grip, the way a host does: the grip
+  // stays put beside the finjan, so the dallah stands close by while held up, and its spout comes over the cup's middle.
+  function gripTurn(a) { const g = dallah.userData.grip, c = Math.cos(a), sn = Math.sin(a); return [g.x - (g.x * c - g.y * sn), g.y - (g.x * sn + g.y * c)]; }
+  function placeHand() {
+    const t = dallah.userData.spoutTip, c = Math.cos(TILT), sn = Math.sin(TILT);
+    const tx = t.x * c - t.y * sn, ty = t.x * sn + t.y * c;          // the tip after the tilt about the base
+    const [ox, oy] = gripTurn(TILT);                                   // and the shift that makes it a turn about the grip
+    DALLAH_AT.hand = [finjan.position.x - tx - ox, finjan.position.y + 0.105 - ty - oy, finjan.position.z, 0];
+  }
   const dPos = new THREE.Vector3(...DALLAH_AT.shelf.slice(0, 3)), dTo = dPos.clone(); let dRot = DALLAH_AT.shelf[3], dRotTo = dRot;
   const mPos = new THREE.Vector3(0, 0.096, 0), mTo = mPos.clone();
 
@@ -283,7 +353,7 @@ export function createWorld(el, opts = {}) {
     if (key === 'roast' || key === 'najr' || key === 'spices') at('shelf');
     if (key === 'boil' || key === 'coffee' || key === 'brew') at('fire');
     if (key === 'settle') at('side');
-    if (key === 'pour') at('hand');
+    if (key === 'pour') { placeHand(); at('rest'); }      // it waits beside the tray; holding the button picks it up
     if (key === 'done') at('side');
     st.heat = key === 'brew' ? 0.45 : (key === 'settle' || key === 'pour' || key === 'done' || key === 'spices') ? 0.7 : 1;
     st.steam = key === 'brew' ? 0.6 : key === 'coffee' ? 0.5 : 0;
@@ -355,9 +425,12 @@ export function createWorld(el, opts = {}) {
     ring.material.opacity = Math.max(0, 0.9 - st.ringT * 1.8); ring.scale.setScalar(1 + st.ringT * 2.5);
     // the dallah moves where the step needs it, tilts to pour
     dPos.lerp(dTo, 1 - Math.exp(-4 * dt)); dRot = ease(dRot, dRotTo, 4);
-    st.tilt = ease(st.tilt, st.pouring ? 1 : 0, 6);
-    dallah.position.copy(dPos); dallah.rotation.set(0, dRot + (st.key === 'pour' ? -Math.PI * 0.82 : 0), 0);
-    if (st.key === 'pour') { dallah.rotateZ(-st.tilt * 0.95); }
+    st.tilt = ease(st.tilt, st.pouring ? 1 : 0, 4);
+    dallah.position.copy(dPos); dallah.rotation.set(0, dRot, st.key === 'pour' ? st.tilt * TILT : 0);
+    if (st.key === 'pour') {   // picked up from beside the tray, then turned about the grip over the finjan
+      const lift = THREE.MathUtils.smoothstep(st.tilt, 0.02, 0.6), [ox, oy] = gripTurn(st.tilt * TILT), hd = DALLAH_AT.hand;
+      dallah.position.set(dPos.x + (hd[0] + ox - dPos.x) * lift, dPos.y + (hd[1] + oy - dPos.y) * lift, dPos.z + (hd[2] - dPos.z) * lift);
+    }
     // spoon of coffee: a little puff when a spoon goes in
     st.spoonT += dt;
     // steam from the dallah
@@ -367,7 +440,7 @@ export function createWorld(el, opts = {}) {
     const h = 0.006 + Math.min(st.l, 1) * 0.04, fill = finjan.userData.fill;
     fill.visible = st.l > 0.01; fill.position.y = h; fill.scale.setScalar(Math.max(0.001, finjan.userData.radiusAt(h) * 0.98));
     // the stream from the spout tip to the coffee surface
-    if (st.key === 'pour' && st.tilt > 0.55) {
+    if (st.key === 'pour' && st.tilt > 0.62) {
       dallah.updateMatrixWorld(); const tip = dallah.userData.spoutTip.clone().applyMatrix4(dallah.matrixWorld);
       const end = new THREE.Vector3(finjan.position.x, finjan.position.y + h, finjan.position.z);
       const len = Math.max(0.001, tip.y - end.y); stream.visible = true;
