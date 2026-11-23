@@ -86,19 +86,20 @@ const sound = () => window.clSound || null;
 document.addEventListener('touchend', () => { const s = sound(); if (s) s.prime(); }, { capture: true, passive: true, once: true });
 document.addEventListener('click', () => { const s = sound(); if (s) s.prime(); }, { capture: true, passive: true, once: true });
 
-// the line in pieces the voice can take (at most 190 characters), joined into as few requests as possible
+// the line in pieces the voice can take (at most 190 characters). The first piece is short (about one sentence), so
+// the voice is made fast and starts playing while the rest is still being made.
 export function voicePieces(text) {
   const out = [];
   let rest = String(text || '').replace(/\s+/g, ' ').trim();
-  while (rest.length > 190) {
-    const head = rest.slice(0, 191);
+  for (let max = 110; rest.length > max; max = 190) {
+    const head = rest.slice(0, max + 1);
     let cut = -1;
     for (const re of [/[.!?؟]\s/g, /[،,;؛:]\s/g, /\s/g]) {
       let m, last = -1;
       while ((m = re.exec(head))) last = m.index + 1;
-      if (last > 57) { cut = last; break; }
+      if (last > max * 0.3) { cut = last; break; }
     }
-    if (cut < 0) cut = 190;
+    if (cut < 0) cut = max;
     out.push(rest.slice(0, cut).trim()); rest = rest.slice(cut).trim();
   }
   if (rest) out.push(rest);
@@ -109,10 +110,11 @@ export function voicePieces(text) {
 let restingTill = {};
 try { restingTill = JSON.parse(sessionStorage.getItem('cl_voice_rest') || '{}') || {}; } catch (e) {}
 function restVoice(lang, ms) { restingTill[lang] = Date.now() + ms; try { sessionStorage.setItem('cl_voice_rest', JSON.stringify(restingTill)); } catch (e) {} }
+// every line, English too, is read by the Saudi voice (the Arabic-accented English the team loves)
 async function fetchVoice(text, lang, voice, signal) {
   const ep = endpoint(); if (!ep) throw new Error('off');
   const headers = ep.plain ? { 'content-type': 'text/plain;charset=UTF-8' } : { 'content-type': 'application/json', ...(ep.key ? { authorization: 'Bearer ' + ep.key, apikey: ep.key } : {}) };
-  const res = await fetch(ep.url, { method: 'POST', headers, body: JSON.stringify({ action: 'tts', text, lang, voice, device: deviceKey() }), signal });
+  const res = await fetch(ep.url, { method: 'POST', headers, body: JSON.stringify({ action: 'tts', text, lang: 'ar', accent: 'saudi', voice, device: deviceKey() }), signal });
   if (!res.ok || !/audio/.test(res.headers.get('content-type') || '')) {
     const j = await res.json().catch(() => ({}));
     const e = new Error(j.error || 'voice ' + res.status); e.retry = j.retry_ms || (res.status === 429 ? 10 * 60e3 : 0); e.hard = res.status === 400; throw e;
@@ -184,7 +186,7 @@ export function speak(text, lang, opts) {
       try {
         for (; i < parts.length; i++) {
           const p = get(i); if (i + 1 < parts.length) get(i + 1).catch(() => {});
-          const ab = await timeout(p, i === 0 ? 9000 : 15000);
+          const ab = await timeout(p, i === 0 ? 15000 : 20000);     // a new line takes Groq a few seconds to make
           if (my !== talk) return finish();
           if (i === 0 && opts.onStart) opts.onStart();
           await playBuffer(ctx, ab, opts.onLevel, my);
