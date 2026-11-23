@@ -375,7 +375,9 @@ function renderAR() {
   arBtn.hidden = false;
   arBtn.classList.toggle('is-off', !S.arMode);
   arBtn.classList.toggle('is-in', S.inAR);
-  arBtn.innerHTML = ICON.cube + '<span>' + L(S.inAR ? T.arExit : S.arMode === 'quicklook' ? T.arQL : T.ar) + '</span>';
+  var label = L(S.inAR ? T.arExit : S.arMode === 'quicklook' ? T.arQL : T.ar);
+  arBtn.innerHTML = ICON.cube + '<span>' + label + '</span>';
+  arBtn.setAttribute('aria-label', label); arBtn.title = label;
 }
 
 // ════════════════════════════════════════════════════════════
